@@ -5,6 +5,7 @@
  *   - 토큰 보관 (localStorage)
  *   - 401 → refresh 1회 → 원래 요청 재시도 (실패하면 세션 종료 신호)
  *   - 서버 오류를 ApiError(status, body) 로 통일
+ *   - "아직 안 만들어진 엔드포인트"를 빈 값으로 흘려보내는 optional()
  *
  * 화면 문구·재시도 정책 같은 "사람이 보는 판단"은 app.js 가 한다.
  * 층을 나눈 이유는 단순하다. 401 재발급을 화면마다 짜면 반드시 한 군데를
@@ -74,9 +75,6 @@
    * (안 그러면 refresh 토큰이 회전하는 순간 서로를 무효화한다)
    * ---------------------------------------------------------------- */
   var refreshInFlight = null;
-
-  /** 경로 → blob URL 약속. 같은 사진을 여러 번 받지 않게 한다. */
-  var mediaCache = {};
 
   function doRefresh() {
     if (refreshInFlight) return refreshInFlight;
@@ -179,12 +177,79 @@
   }
 
   /* ----------------------------------------------------------------
-   * 엔드포인트 (계약 그대로)
+   * 아직 배포되지 않은 엔드포인트
+   *
+   * 백엔드가 만드는 중인 API 는 서버 구현 방식에 따라 여러 얼굴로 없다.
+   *   - 라우트 자체가 없으면 404
+   *   - 같은 경로에 다른 메서드만 있으면 405
+   *   - /api/clothes/{id} 같은 경로와 겹치면 400 invalid_request
+   *     (예: "stats" 를 id 로 파싱하다 실패)
+   * 이 셋은 "장애"가 아니라 "아직 없음"이다. 화면을 깨뜨리지 않고
+   * 빈 값으로 흘려보낸다. 401·5xx 같은 진짜 문제는 그대로 통과시킨다.
+   * ---------------------------------------------------------------- */
+  function isNotDeployed(err) {
+    if (!err || !err.isApiError) return false;
+    if (err.status === 404 || err.status === 405 || err.status === 501) return true;
+    if (err.status === 400 && (err.code === 'invalid_request' || err.code === 'parse_error')) return true;
+    return false;
+  }
+
+  /** 없으면 fallback 을 돌려주는 요청. 결과에 __unavailable 을 달아 화면이 구분할 수 있게 한다. */
+  function optional(promise, fallback) {
+    return promise.catch(function (err) {
+      if (!isNotDeployed(err)) throw err;
+      var value = (typeof fallback === 'function') ? fallback() : fallback;
+      if (value && typeof value === 'object') {
+        try { Object.defineProperty(value, '__unavailable', { value: true, enumerable: false }); }
+        catch (e) { /* 얼려진 객체면 넘어간다 */ }
+      }
+      return value;
+    });
+  }
+
+  function emptyPage(size) {
+    return { content: [], page: 0, size: size || 20, totalElements: 0, totalPages: 0, hasNext: false };
+  }
+
+  function qs(params) {
+    var q = new URLSearchParams();
+    Object.keys(params).forEach(function (k) {
+      if (params[k] !== null && params[k] !== undefined && params[k] !== '') q.set(k, String(params[k]));
+    });
+    var s = q.toString();
+    return s ? '?' + s : '';
+  }
+
+  /* ----------------------------------------------------------------
+   * 이미지 캐시
+   *
+   * 서버가 /media/** 를 인증된 소유자에게만 내주므로 <img src="/media/...">
+   * 로는 볼 수 없다 (헤더를 붙일 수 없다). fetch 로 받아 blob: URL 로 바꿔 끼운다.
+   * 같은 경로는 한 번만 받고, 오래된 것부터 정리해 메모리가 무한정 늘지 않게 한다.
+   * ---------------------------------------------------------------- */
+  var mediaCache = {};
+  var mediaOrder = [];
+  var MEDIA_LIMIT = 80;
+
+  function revokeEntry(path) {
+    var p = mediaCache[path];
+    if (!p) return;
+    delete mediaCache[path];
+    var i = mediaOrder.indexOf(path);
+    if (i >= 0) mediaOrder.splice(i, 1);
+    p.then(function (url) {
+      if (typeof url === 'string' && url.indexOf('blob:') === 0) URL.revokeObjectURL(url);
+    }, function () {});
+  }
+
+  /* ----------------------------------------------------------------
+   * 엔드포인트
    * ---------------------------------------------------------------- */
   var api = {
     tokens: tokens,
     ApiError: ApiError,
     request: request,
+    isNotDeployed: isNotDeployed,
 
     onSessionExpired: function (fn) { onSessionExpired = fn; },
 
@@ -202,7 +267,8 @@
           return data;
         });
       },
-      logout: function () { tokens.clear(); api.media.clearCache(); }
+      /** 세션을 버린다. 화면에 버튼은 없지만 만료 처리에는 필요하다. */
+      end: function () { tokens.clear(); api.media.clearCache(); }
     },
 
     users: {
@@ -211,19 +277,28 @@
         var fd = new FormData();
         fd.append('image', file);
         return request('/api/users/me/body-photo', { method: 'PUT', form: fd });
+      },
+      stylePreference: function () {
+        return optional(request('/api/users/me/style-preference'), { preference: null });
+      },
+      saveStylePreference: function (preference) {
+        return request('/api/users/me/style-preference', {
+          method: 'PUT', json: { preference: preference }
+        });
       }
     },
 
     clothes: {
       list: function (params) {
         params = params || {};
-        var q = new URLSearchParams();
-        q.set('page', String(params.page || 0));
-        q.set('size', String(params.size || 20));
-        // 계약에 없는 선택 파라미터. 서버가 지원하면 페이지네이션이 정확해지고,
-        // 무시해도 클라이언트 필터가 그대로 남아 있어 동작은 같다.
-        if (params.mainCategory) q.set('mainCategory', params.mainCategory);
-        return request('/api/clothes?' + q.toString());
+        return request('/api/clothes' + qs({
+          page: params.page || 0,
+          size: params.size || 20,
+          mainCategory: params.mainCategory || null
+        }));
+      },
+      get: function (id) {
+        return request('/api/clothes/' + encodeURIComponent(id));
       },
       analyze: function (file, signal) {
         var fd = new FormData();
@@ -239,35 +314,27 @@
         if (data.detail) fd.append('detail', data.detail);
         return request('/api/clothes', { method: 'POST', form: fd });
       },
+      update: function (id, patch) {
+        return request('/api/clothes/' + encodeURIComponent(id), { method: 'PATCH', json: patch });
+      },
       remove: function (id) {
         return request('/api/clothes/' + encodeURIComponent(id), { method: 'DELETE' });
-      }
-    },
-
-    /**
-     * 이미지. 서버가 /media/** 를 인증된 소유자에게만 내주므로,
-     * <img src="/media/..."> 는 헤더를 붙일 수 없어 그대로는 못 본다.
-     * 그래서 fetch 로 받아 blob: URL 로 바꿔 끼운다. 같은 경로는 한 번만 받는다.
-     */
-    media: {
-      objectUrl: function (path) {
-        if (!path) return Promise.reject(new Error('no path'));
-        if (path.indexOf('/media/') === -1) return Promise.resolve(path); // 외부/공개 URL
-        if (!mediaCache[path]) {
-          mediaCache[path] = request(path, { blob: true })
-            .then(function (blob) { return URL.createObjectURL(blob); })
-            .catch(function (err) { delete mediaCache[path]; throw err; });
-        }
-        return mediaCache[path];
       },
-      /** 로그아웃 시 메모리에 남은 개인 사진을 버린다. */
-      clearCache: function () {
-        Object.keys(mediaCache).forEach(function (k) {
-          var p = mediaCache[k];
-          delete mediaCache[k];
-          p.then(function (url) {
-            if (typeof url === 'string' && url.indexOf('blob:') === 0) URL.revokeObjectURL(url);
-          }, function () {});
+      /** 이 옷이 쓰인 코디 (아직 없을 수 있다) */
+      coordinations: function (id, params) {
+        params = params || {};
+        var size = params.size || 20;
+        return optional(
+          request('/api/clothes/' + encodeURIComponent(id) + '/coordinations' + qs({
+            page: params.page || 0, size: size
+          })),
+          function () { return emptyPage(size); }
+        );
+      },
+      /** 옷장 통계 (아직 없을 수 있다) */
+      stats: function () {
+        return optional(request('/api/clothes/stats'), function () {
+          return { total: null, byCategory: {}, mostUsed: [], neverUsed: null };
         });
       }
     },
@@ -277,8 +344,63 @@
         return request('/api/coordinations/recommend', { method: 'POST', json: {} });
       },
       today: function () { return request('/api/coordinations/today'); },
+      /** 전체 기록 최신순 (아직 없을 수 있다) */
+      list: function (params) {
+        params = params || {};
+        var size = params.size || 12;
+        return optional(
+          request('/api/coordinations' + qs({ page: params.page || 0, size: size })),
+          function () { return emptyPage(size); }
+        );
+      },
+      get: function (id) {
+        return request('/api/coordinations/' + encodeURIComponent(id));
+      },
+      remove: function (id) {
+        return request('/api/coordinations/' + encodeURIComponent(id), { method: 'DELETE' });
+      },
+      toggleFavorite: function (id) {
+        return request('/api/coordinations/' + encodeURIComponent(id) + '/favorite', { method: 'POST' });
+      },
       tryOn: function (id) {
         return request('/api/coordinations/' + encodeURIComponent(id) + '/tryon', { method: 'POST' });
+      }
+    },
+
+    settings: {
+      geminiKey: function () {
+        return optional(request('/api/settings/gemini-key'), { configured: false, masked: null });
+      },
+      saveGeminiKey: function (key) {
+        return request('/api/settings/gemini-key', { method: 'PUT', json: { key: key } });
+      },
+      removeGeminiKey: function () {
+        return request('/api/settings/gemini-key', { method: 'DELETE' });
+      }
+    },
+
+    media: {
+      objectUrl: function (path) {
+        if (!path) return Promise.reject(new Error('no path'));
+        if (path.indexOf('/media/') === -1) return Promise.resolve(path); // 외부/공개 URL
+
+        var i = mediaOrder.indexOf(path);
+        if (i >= 0) mediaOrder.splice(i, 1);
+        mediaOrder.push(path);
+
+        if (!mediaCache[path]) {
+          mediaCache[path] = request(path, { blob: true })
+            .then(function (blob) { return URL.createObjectURL(blob); })
+            .catch(function (err) { revokeEntry(path); throw err; });
+        }
+        // 오래 안 쓴 것부터 되돌려 준다
+        while (mediaOrder.length > MEDIA_LIMIT) revokeEntry(mediaOrder[0]);
+        return mediaCache[path];
+      },
+      /** 세션이 끝나면 메모리에 남은 개인 사진을 전부 버린다. */
+      clearCache: function () {
+        mediaOrder.slice().forEach(revokeEntry);
+        mediaOrder.length = 0;
       }
     }
   };
