@@ -42,6 +42,16 @@ class Clothes(
 
     @Column(length = 30)
     var color: String? = null,
+
+    /**
+     * 미디어 루트 기준 상대 경로(예: `clothes/2026/08/12/{uuid}.jpg`).
+     *
+     * URL 이 아니라 경로를 저장한다. URL 을 그대로 넣으면 호스트·포트·라우팅이
+     * 바뀌는 순간 과거 행이 전부 깨진 링크가 된다. 응답에 쓸 URL 은 웹 계층이
+     * 이 값 앞에 `/media/` 를 붙여 그때그때 만든다.
+     */
+    @Column(name = "image_path", length = 200)
+    var imagePath: String? = null,
 ) {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -68,6 +78,13 @@ class Coordination(
 
     @Column(nullable = false, length = 80)
     var title: String,
+
+    /**
+     * 추천 이유. AI 추천에만 값이 있고 수동 생성은 null 이다.
+     * "왜 이 조합인지"가 이 앱의 사용 이유라 코디와 같은 행에 붙여 둔다.
+     */
+    @Column(length = 500)
+    var reason: String? = null,
 ) {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -76,6 +93,14 @@ class Coordination(
 
     @Column(name = "created_at", nullable = false, updatable = false)
     val createdAt: Instant = Instant.now()
+
+    /**
+     * 가상 착용 이미지 경로. 한 번 생성되면 다시 만들지 않는다(멱등).
+     * 이미지 생성은 느리고 호출당 비용이 붙는 자원이라, 같은 코디를 여러 번
+     * 눌렀다고 매번 새로 만들면 그대로 요금과 대기 시간이 된다.
+     */
+    @Column(name = "try_on_image_path", length = 200)
+    var tryOnImagePath: String? = null
 
     @OneToMany(
         mappedBy = "coordination",

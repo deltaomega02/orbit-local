@@ -19,3 +19,16 @@ orbit:
     secret: test-only-secret-key-for-orbit-local-tests-0123456789
     access-token-validity: 15m
     refresh-token-validity: 14d
+
+  media:
+    # build/ 아래라 clean 하면 같이 사라진다. 테스트가 사용자 데이터 디렉토리를 건드리지 않는다.
+    dir: ./build/test-media
+    # 일부러 작게 잡는다. 상한이 실제로 동작하는지 확인하려면 상한을 넘겨봐야 하는데,
+    # 8MB 짜리 바이트 배열을 만드는 테스트는 느리고 메모리를 낭비한다.
+    max-file-size: 64KB
+
+  gemini:
+    # 핵심. 이 값이 false 라서 테스트 컨텍스트에는 Gemini 어댑터 빈이 아예 만들어지지
+    # 않는다. AI 테스트는 FakeAiConfig 의 결정적 가짜를 직접 등록해서 쓴다.
+    # 즉 테스트가 실수로 실제 API 를 부를 방법이 구조적으로 없다.
+    enabled: false

@@ -32,6 +32,10 @@ class User(
 
     @Column(name = "display_name", nullable = false, length = 40)
     var displayName: String,
+
+    /** 가상 착용의 바탕이 되는 전신 사진. 미디어 루트 기준 상대 경로. */
+    @Column(name = "body_photo_path", length = 200)
+    var bodyPhotoPath: String? = null,
 ) {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

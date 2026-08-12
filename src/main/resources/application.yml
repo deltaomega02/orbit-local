@@ -13,6 +13,13 @@ spring:
     properties:
       hibernate:
         format_sql: true
+  servlet:
+    multipart:
+      # 컨테이너 단계 상한. 애플리케이션까지 오기 전에 끊어야 큰 파일을 통째로
+      # 버퍼링하지 않는다. orbit.media.max-file-size 가 그 뒤를 받치는 이중 방어다.
+      # 원본 Django 는 상한이 없어 파일 몇 개로 디스크와 메모리를 밀어낼 수 있었다.
+      max-file-size: 8MB
+      max-request-size: 24MB
 
 # 인증. 시크릿은 반드시 환경변수(ORBIT_JWT_SECRET)로 주입한다.
 # 아래 기본값은 "이건 개발용이다"라고 이름으로 못박아 둔 값이라, 운영에 그대로
@@ -22,6 +29,27 @@ orbit:
     secret: ${ORBIT_JWT_SECRET:dev-only-insecure-secret-do-not-use-in-production-0123456789}
     access-token-validity: 15m     # 짧게. 무상태 검증이라 탈퇴/차단 반영 지연의 상한이 된다
     refresh-token-validity: 14d
+
+  media:
+    dir: ${ORBIT_MEDIA_DIR:./data/media}   # .gitignore 의 data/ 안이라 저장소에 섞이지 않는다
+    max-file-size: 8MB
+
+  gemini:
+    # 키는 환경변수로만 들어온다. 기본값이 빈 문자열이므로 이 파일에 실제 키가 존재할
+    # 일이 없고, 키가 없으면 AI 엔드포인트만 503 이고 나머지 기능은 그대로 동작한다.
+    api-key: ${GEMINI_API_KEY:}
+    enabled: true
+    base-url: https://generativelanguage.googleapis.com/v1beta
+    # 모델 id 는 설정으로 뺀다. 하드코딩하면 모델이 바뀔 때마다 배포가 필요하다.
+    # 2026-08 기준 GA 모델로 확인해 넣었다(텍스트: Gemini 3.6 Flash,
+    # 이미지: Gemini 3.1 Flash Image = Nano Banana 2). 모델 라인업은 자주 바뀌므로
+    # 401/404 가 나면 여기부터 확인할 것.
+    text-model: gemini-3.6-flash
+    image-model: gemini-3.1-flash-image
+    connect-timeout: 5s
+    read-timeout: 60s              # 이미지 생성은 원래 느리다
+    max-attempts: 3                # 재시도 대상은 타임아웃·5xx·429 뿐 (4xx 는 즉시 포기)
+    retry-backoff: 500ms
 
 server:
   port: 8080

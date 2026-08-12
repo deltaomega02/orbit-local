@@ -7,13 +7,18 @@ import com.orbit.domain.User
 import org.springframework.data.domain.Page
 import org.springframework.data.domain.Pageable
 import org.springframework.data.jpa.repository.JpaRepository
+import org.springframework.data.jpa.repository.Modifying
 import org.springframework.data.jpa.repository.Query
 import org.springframework.data.repository.query.Param
+import org.springframework.transaction.annotation.Transactional
 import java.time.Instant
 
 interface UserRepository : JpaRepository<User, Long> {
     fun findByEmail(email: String): User?
     fun existsByEmail(email: String): Boolean
+
+    /** `/media/…` 소유권 검사용. "이 경로가 이 사용자의 전신 사진인가". */
+    fun existsByIdAndBodyPhotoPath(id: Long, bodyPhotoPath: String): Boolean
 }
 
 /**
@@ -31,6 +36,9 @@ interface ClothesRepository : JpaRepository<Clothes, Long> {
     fun findAllByOwnerIdOrderByIdDesc(ownerId: Long, pageable: Pageable): Page<Clothes>
 
     fun findByIdAndOwnerId(id: Long, ownerId: Long): Clothes?
+
+    /** `/media/…` 소유권 검사용. */
+    fun existsByOwnerIdAndImagePath(ownerId: Long, imagePath: String): Boolean
 }
 
 interface CoordinationItemRepository : JpaRepository<CoordinationItem, Long> {
@@ -62,4 +70,40 @@ interface CoordinationRepository : JpaRepository<Coordination, Long> {
         @Param("from") from: Instant,
         @Param("to") to: Instant,
     ): List<Coordination>
+
+    /**
+     * 코디 하나를 아이템·의류까지 붙여서 가져온다.
+     *
+     * 가상 착용은 각 의류의 이미지 파일을 읽어야 해서 아이템이 반드시 필요하다.
+     * 그런데 AI 호출을 트랜잭션 안에서 기다리게 두면 커넥션을 수 초 동안 붙잡게
+     * 되므로, 트랜잭션 밖에서 다루려면 컬렉션이 미리 초기화돼 있어야 한다.
+     */
+    @Query(
+        """
+        select c from Coordination c
+        left join fetch c.mutableItems i
+        left join fetch i.clothes
+        where c.id = :id and c.ownerId = :ownerId
+        """,
+    )
+    fun findByIdAndOwnerIdWithItems(@Param("id") id: Long, @Param("ownerId") ownerId: Long): Coordination?
+
+    /** `/media/…` 소유권 검사용. */
+    fun existsByOwnerIdAndTryOnImagePath(ownerId: Long, tryOnImagePath: String): Boolean
+
+    /**
+     * 가상 착용 이미지 경로만 갱신한다.
+     *
+     * 트랜잭션 밖에서 읽어 온 detached 엔티티를 `save()` 로 merge 하면 아이템
+     * 컬렉션까지 통째로 병합 대상이 된다(cascade + orphanRemoval). 바꾸려는 건
+     * 컬럼 하나뿐이므로 그 한 컬럼만 건드린다.
+     */
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Transactional
+    @Query("update Coordination c set c.tryOnImagePath = :path where c.id = :id and c.ownerId = :ownerId")
+    fun updateTryOnImagePath(
+        @Param("id") id: Long,
+        @Param("ownerId") ownerId: Long,
+        @Param("path") path: String,
+    ): Int
 }
