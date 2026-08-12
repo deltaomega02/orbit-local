@@ -4,6 +4,7 @@ import com.orbit.domain.Coordination
 import com.orbit.domain.MainCategory
 import com.orbit.security.AuthenticatedUser
 import com.orbit.service.CoordinationService
+import com.orbit.service.OutfitAiService
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.NotEmpty
 import org.springframework.http.HttpStatus
@@ -23,18 +24,24 @@ data class CoordinationItemResponse(
     val name: String,
     val mainCategory: MainCategory,
     val layerOrder: Int,
+    val imageUrl: String?,
 )
 
 data class CoordinationResponse(
     val id: Long,
     val title: String,
+    /** AI 추천이면 추천 이유, 수동 생성이면 null. */
+    val reason: String?,
     val createdAt: Instant,
     val items: List<CoordinationItemResponse>,
+    /** 아직 만들지 않았으면 null. 만들려면 `POST /api/coordinations/{id}/tryon`. */
+    val tryOnImageUrl: String?,
 ) {
     companion object {
         fun from(c: Coordination) = CoordinationResponse(
             id = requireNotNull(c.id),
             title = c.title,
+            reason = c.reason,
             createdAt = c.createdAt,
             items = c.items.map {
                 CoordinationItemResponse(
@@ -42,11 +49,15 @@ data class CoordinationResponse(
                     name = it.clothes.name,
                     mainCategory = it.clothes.mainCategory,
                     layerOrder = it.layerOrder,
+                    imageUrl = mediaUrl(it.clothes.imagePath),
                 )
             },
+            tryOnImageUrl = mediaUrl(c.tryOnImagePath),
         )
     }
 }
+
+data class TryOnResponse(val tryOnImageUrl: String)
 
 /**
  * 중복 조합 응답. `retry: true` 는 "같은 요청을 그대로 다시 보내지 말고
@@ -64,7 +75,30 @@ data class DuplicateResponse(
 @Validated
 class CoordinationController(
     private val service: CoordinationService,
+    private val outfitAiService: OutfitAiService,
 ) {
+
+    /**
+     * AI 추천. 본문이 없다 — 서버가 옷장 전체를 후보로 삼기 때문에 클라이언트가
+     * 보낼 값이 없다. 응답 계약은 수동 생성과 완전히 같고, 중복이면 여기서도
+     * 409 + `retry: true` 가 나간다. 클라이언트 입장에서는 "추천을 다시 눌러라"
+     * 하나로 처리가 끝난다.
+     */
+    @PostMapping("/recommend")
+    fun recommend(@AuthenticationPrincipal user: AuthenticatedUser): ResponseEntity<CoordinationResponse> {
+        val created = outfitAiService.recommend(user.id)
+        return ResponseEntity.status(HttpStatus.CREATED).body(CoordinationResponse.from(created))
+    }
+
+    /**
+     * 가상 착용 이미지 생성. 멱등이다 — 이미 있으면 만들지 않고 기존 것을 돌려주므로
+     * 클라이언트가 재시도·중복 클릭을 신경 쓰지 않아도 된다. 그래서 201 이 아니라 200 이다.
+     */
+    @PostMapping("/{id}/tryon")
+    fun tryOn(
+        @AuthenticationPrincipal user: AuthenticatedUser,
+        @PathVariable id: Long,
+    ): TryOnResponse = TryOnResponse(requireNotNull(mediaUrl(outfitAiService.generateTryOn(user.id, id))))
 
     /**
      * 소유자를 `X-Owner-Id` 헤더가 아니라 검증된 토큰에서 받는다.

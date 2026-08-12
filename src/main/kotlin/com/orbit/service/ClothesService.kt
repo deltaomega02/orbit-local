@@ -25,9 +25,21 @@ class ClothesService(
 ) {
 
     @Transactional
-    fun create(ownerId: Long, name: String, mainCategory: MainCategory, color: String?): Clothes =
+    fun create(
+        ownerId: Long,
+        name: String,
+        mainCategory: MainCategory,
+        color: String?,
+        imagePath: String? = null,
+    ): Clothes =
         clothesRepository.save(
-            Clothes(ownerId = ownerId, name = name.trim(), mainCategory = mainCategory, color = color?.trim()),
+            Clothes(
+                ownerId = ownerId,
+                name = name.trim(),
+                mainCategory = mainCategory,
+                color = color?.trim()?.ifEmpty { null },
+                imagePath = imagePath,
+            ),
         )
 
     /**

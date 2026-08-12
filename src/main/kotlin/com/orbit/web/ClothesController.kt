@@ -2,17 +2,21 @@ package com.orbit.web
 
 import com.orbit.domain.Clothes
 import com.orbit.domain.MainCategory
+import com.orbit.media.MediaStorage
 import com.orbit.security.AuthenticatedUser
 import com.orbit.service.ClothesService
+import com.orbit.service.OutfitAiService
 import jakarta.validation.Valid
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.Size
 import org.springframework.data.domain.Page
 import org.springframework.data.domain.PageRequest
 import org.springframework.http.HttpStatus
+import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
 import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.web.bind.annotation.*
+import org.springframework.web.multipart.MultipartFile
 import java.time.Instant
 
 data class CreateClothesRequest(
@@ -33,6 +37,8 @@ data class ClothesResponse(
     val name: String,
     val mainCategory: MainCategory,
     val color: String?,
+    /** 사진이 없으면 null. 클라이언트는 이 값으로 플레이스홀더 표시 여부를 판단한다. */
+    val imageUrl: String?,
     val createdAt: Instant,
 ) {
     companion object {
@@ -41,10 +47,19 @@ data class ClothesResponse(
             name = c.name,
             mainCategory = c.mainCategory,
             color = c.color,
+            imageUrl = mediaUrl(c.imagePath),
             createdAt = c.createdAt,
         )
     }
 }
+
+/** 사진 분석 결과. 저장하지 않고 등록 폼을 미리 채우는 데만 쓴다. */
+data class ClothesAnalysisResponse(
+    val name: String,
+    val mainCategory: MainCategory,
+    val color: String?,
+    val detail: String?,
+)
 
 /**
  * 페이지 응답을 직접 정의한다. Spring 의 `Page` 를 그대로 직렬화하면 내부 구조가
@@ -85,15 +100,67 @@ private const val MAX_PAGE_SIZE = 100
 @RequestMapping("/api/clothes")
 class ClothesController(
     private val service: ClothesService,
+    private val outfitAiService: OutfitAiService,
+    private val mediaStorage: MediaStorage,
 ) {
 
-    @PostMapping
+    @PostMapping(consumes = [MediaType.APPLICATION_JSON_VALUE])
     fun create(
         @AuthenticationPrincipal user: AuthenticatedUser,
         @Valid @RequestBody request: CreateClothesRequest,
     ): ResponseEntity<ClothesResponse> {
         val created = service.create(user.id, request.name, request.mainCategory, request.color)
         return ResponseEntity.status(HttpStatus.CREATED).body(ClothesResponse.from(created))
+    }
+
+    /**
+     * 사진과 함께 등록한다. JSON 버전과 경로를 공유하고 Content-Type 으로 갈린다 —
+     * 사진 없이 이름만 넣는 기존 클라이언트를 깨지 않으면서 새 경로를 더하기 위해서다.
+     *
+     * 파일을 먼저 쓰고 DB 행을 만든다. DB 저장이 실패하면 아무도 참조하지 않는 파일이
+     * 하나 남지만, 반대 순서였다면 사진이 보이지 않는 행이 남는다. 사용자에게 보이는
+     * 고장은 뒤쪽이 훨씬 나쁘다.
+     */
+    @PostMapping(consumes = [MediaType.MULTIPART_FORM_DATA_VALUE])
+    fun createWithImage(
+        @AuthenticationPrincipal user: AuthenticatedUser,
+        @RequestParam("name") name: String,
+        @RequestParam("mainCategory") mainCategory: MainCategory,
+        @RequestParam("color", required = false) color: String?,
+        @RequestPart("image", required = false) image: MultipartFile?,
+    ): ResponseEntity<ClothesResponse> {
+        // multipart 폼 필드에는 @Valid 가 걸리지 않으므로 JSON 쪽과 같은 제약을 손으로 맞춘다.
+        require(name.isNotBlank() && name.length <= 60) { "name 은 1~60자여야 합니다" }
+        require((color?.length ?: 0) <= 30) { "color 는 30자를 넘을 수 없습니다" }
+
+        val imagePath = image?.takeIf { !it.isEmpty }
+            ?.let { mediaStorage.store("clothes", it.bytes, it.contentType).relativePath }
+        val created = service.create(user.id, name, mainCategory, color, imagePath)
+        return ResponseEntity.status(HttpStatus.CREATED).body(ClothesResponse.from(created))
+    }
+
+    /**
+     * 사진 한 장으로 등록 값을 제안한다. **저장하지 않는다.**
+     *
+     * 분석과 등록을 한 번에 하지 않은 이유: AI 가 틀린 값을 넣은 채로 저장되면
+     * 사용자는 그걸 다시 고쳐야 하고, 그 사이 옷장에는 잘못된 데이터가 남는다.
+     * 제안 → 사람이 확인 → 저장 순서라야 AI 가 틀려도 옷장이 오염되지 않는다.
+     */
+    @PostMapping("/analyze", consumes = [MediaType.MULTIPART_FORM_DATA_VALUE])
+    fun analyze(
+        @AuthenticationPrincipal user: AuthenticatedUser,
+        @RequestPart("image") image: MultipartFile,
+    ): ClothesAnalysisResponse {
+        // 저장하지 않더라도 크기·형식 검증은 똑같이 통과해야 한다. 검증을 건너뛰면
+        // 이 엔드포인트가 "아무 바이트나 AI 에 그대로 넘기는 통로"가 된다.
+        val type = mediaStorage.validate(image.bytes, image.contentType)
+        val analysis = outfitAiService.analyze(image.bytes, type.mime)
+        return ClothesAnalysisResponse(
+            name = analysis.name,
+            mainCategory = analysis.mainCategory,
+            color = analysis.color,
+            detail = analysis.detail,
+        )
     }
 
     /**

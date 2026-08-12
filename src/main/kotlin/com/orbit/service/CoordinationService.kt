@@ -38,7 +38,7 @@ class CoordinationService(
      * 남지 않는다 — 아이템이 비어 있는 코디가 생기던 이전 구현의 문제를 막는다.
      */
     @Transactional
-    fun create(ownerId: Long, title: String, clothesIds: List<Long>): Coordination {
+    fun create(ownerId: Long, title: String, clothesIds: List<Long>, reason: String? = null): Coordination {
         require(clothesIds.isNotEmpty()) { "clothesIds는 비어 있을 수 없습니다" }
 
         val requested = clothesIds.toSet()
@@ -52,7 +52,7 @@ class CoordinationService(
             throw DuplicateCoordinationException(requested)
         }
 
-        val coordination = Coordination(ownerId = ownerId, title = title)
+        val coordination = Coordination(ownerId = ownerId, title = title, reason = reason)
         // 카테고리로 레이어 순서를 정한다. 정렬을 안정적으로 만들기 위해
         // 같은 카테고리 안에서는 id 순으로 둔다.
         found.sortedWith(compareBy({ layerOf(it) }, { it.id })).forEach {
