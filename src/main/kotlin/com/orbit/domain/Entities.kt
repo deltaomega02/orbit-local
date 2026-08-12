@@ -5,6 +5,22 @@ import java.time.Instant
 
 enum class MainCategory { TOP, BOTTOM, OUTER }
 
+/*
+ * [Clothes] · [Coordination] 의 `ownerId` 는 [User] 의 id 다.
+ * `@ManyToOne User` 로 연관을 걸지 않고 id 값으로만 참조한다.
+ *
+ * 이유 두 가지.
+ *  1) 소유권 격리에 필요한 것은 id 비교뿐이다. 연관을 걸면 조회마다 User 를 함께
+ *     끌고 오거나 프록시를 만들게 되는데, 쓰지도 않을 사용자 정보를 위해 쿼리를
+ *     늘릴 이유가 없다. 이 저장소는 N+1 을 테스트로 고정해 두고 있어 특히 그렇다.
+ *  2) User 와 Clothes 는 서로 다른 애그리거트다. 다른 애그리거트는 객체 참조가
+ *     아니라 id 로 참조하는 편이 경계를 흐리지 않는다.
+ *
+ * 대가로 DB 레벨 FK 가 없어 고아 행이 생길 수 있다. 지금은 ownerId 가 항상 검증된
+ * 토큰의 subject 에서만 오므로 실제로는 생기지 않지만, 사용자 삭제 기능을 붙이는
+ * 시점에 정리 로직이 필요하다는 것은 알고 있다.
+ */
+
 @Entity
 @Table(
     name = "clothes",

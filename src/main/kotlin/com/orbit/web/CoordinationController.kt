@@ -2,13 +2,13 @@ package com.orbit.web
 
 import com.orbit.domain.Coordination
 import com.orbit.domain.MainCategory
+import com.orbit.security.AuthenticatedUser
 import com.orbit.service.CoordinationService
-import com.orbit.service.DuplicateCoordinationException
-import com.orbit.service.UnknownClothesException
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.NotEmpty
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
+import org.springframework.security.core.annotation.AuthenticationPrincipal
 import org.springframework.validation.annotation.Validated
 import org.springframework.web.bind.annotation.*
 import java.time.Instant
@@ -59,8 +59,6 @@ data class DuplicateResponse(
     val clothesIds: Set<Long>,
 )
 
-data class ErrorResponse(val error: String, val detail: String)
-
 @RestController
 @RequestMapping("/api/coordinations")
 @Validated
@@ -68,39 +66,20 @@ class CoordinationController(
     private val service: CoordinationService,
 ) {
 
+    /**
+     * 소유자를 `X-Owner-Id` 헤더가 아니라 검증된 토큰에서 받는다.
+     * 헤더 방식은 값을 보내는 쪽이 마음대로 바꿀 수 있어 사실상 인증이 아니었다.
+     */
     @PostMapping
     fun create(
-        @RequestHeader("X-Owner-Id") ownerId: Long,
+        @AuthenticationPrincipal user: AuthenticatedUser,
         @RequestBody request: CreateCoordinationRequest,
     ): ResponseEntity<CoordinationResponse> {
-        val created = service.create(ownerId, request.title, request.clothesIds)
+        val created = service.create(user.id, request.title, request.clothesIds)
         return ResponseEntity.status(HttpStatus.CREATED).body(CoordinationResponse.from(created))
     }
 
     @GetMapping("/today")
-    fun today(@RequestHeader("X-Owner-Id") ownerId: Long): List<CoordinationResponse> =
-        service.todayCoordinations(ownerId).map(CoordinationResponse::from)
-}
-
-/**
- * 예외 → HTTP 응답 변환을 한 곳에 모은다. Django 버전에서는 뷰마다 try/except 를
- * 반복해 응답 모양이 조금씩 달라졌고, 결국 클라이언트가 여러 키를 fallback 으로
- * 시도하는 코드가 생겼다.
- */
-@RestControllerAdvice
-class ApiExceptionHandler {
-
-    @ExceptionHandler(DuplicateCoordinationException::class)
-    fun handleDuplicate(e: DuplicateCoordinationException): ResponseEntity<DuplicateResponse> =
-        ResponseEntity.status(HttpStatus.CONFLICT).body(DuplicateResponse(clothesIds = e.clothesIds))
-
-    @ExceptionHandler(UnknownClothesException::class)
-    fun handleUnknown(e: UnknownClothesException): ResponseEntity<ErrorResponse> =
-        ResponseEntity.badRequest()
-            .body(ErrorResponse("unknown_clothes", "알 수 없는 의류 id: ${e.missingIds}"))
-
-    @ExceptionHandler(IllegalArgumentException::class)
-    fun handleIllegalArgument(e: IllegalArgumentException): ResponseEntity<ErrorResponse> =
-        ResponseEntity.badRequest()
-            .body(ErrorResponse("invalid_request", e.message ?: "잘못된 요청입니다"))
+    fun today(@AuthenticationPrincipal user: AuthenticatedUser): List<CoordinationResponse> =
+        service.todayCoordinations(user.id).map(CoordinationResponse::from)
 }

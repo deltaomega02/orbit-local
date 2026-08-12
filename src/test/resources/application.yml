@@ -11,3 +11,11 @@ spring:
 logging:
   level:
     org.hibernate.stat: WARN
+
+orbit:
+  jwt:
+    # 테스트 전용 값. main 의 application.yml 은 테스트 클래스패스에서 이 파일로
+    # 완전히 대체되므로(병합이 아니다) 여기에도 있어야 한다.
+    secret: test-only-secret-key-for-orbit-local-tests-0123456789
+    access-token-validity: 15m
+    refresh-token-validity: 14d
