@@ -100,6 +100,80 @@ interface CoordinationRepository : JpaRepository<Coordination, Long> {
     )
     fun findByIdAndOwnerIdWithItems(@Param("id") id: Long, @Param("ownerId") ownerId: Long): Coordination?
 
+    /*
+     * ── 기록 목록: 컬렉션 fetch join 과 페이지네이션을 어떻게 같이 쓰는가 ──
+     *
+     * 컬렉션을 fetch join 한 쿼리에 limit/offset 을 붙이면 JPA 는 자를 수 없다.
+     * 조인 결과의 한 행은 코디가 아니라 "코디 × 아이템"이라, DB 에서 20행을 자르면
+     * 코디가 20개 나오는 게 아니라 중간에서 잘린 코디가 나온다. Hibernate 는 이걸
+     * 알기 때문에 전부 읽어 메모리에서 자르고(HHH000104) 경고만 남긴다 — 즉
+     * 페이지네이션이 조용히 사라진다. 원본에서 목록이 항상 전체를 반환했던 것과
+     * 사실상 같은 상태가 된다.
+     *
+     * 그래서 두 단계로 나눈다.
+     *  1) id 만 페이지네이션해서 가져온다 (컬렉션이 없으니 DB 가 정확히 자른다)
+     *  2) 그 id 들의 코디를 아이템·의류까지 한 번에 fetch join 한다
+     * 쿼리는 count + id + fetch 로 항상 3회다. 코디가 몇 건이든 늘지 않는다.
+     */
+
+    @Query(
+        value = """
+        select c.id from Coordination c
+        where c.ownerId = :ownerId
+        order by c.createdAt desc, c.id desc
+        """,
+        countQuery = "select count(c) from Coordination c where c.ownerId = :ownerId",
+    )
+    fun findIdPageByOwnerId(@Param("ownerId") ownerId: Long, pageable: Pageable): Page<Long>
+
+    /**
+     * 이 옷이 실제로 쓰인 코디의 id. `uq_coordination_clothes` 덕분에 코디 하나당
+     * 아이템이 최대 하나만 매칭되므로 distinct 가 필요 없다.
+     */
+    @Query(
+        value = """
+        select c.id from Coordination c join c.mutableItems i
+        where c.ownerId = :ownerId and i.clothes.id = :clothesId
+        order by c.createdAt desc, c.id desc
+        """,
+        countQuery = """
+        select count(c) from Coordination c join c.mutableItems i
+        where c.ownerId = :ownerId and i.clothes.id = :clothesId
+        """,
+    )
+    fun findIdPageByClothesId(
+        @Param("ownerId") ownerId: Long,
+        @Param("clothesId") clothesId: Long,
+        pageable: Pageable,
+    ): Page<Long>
+
+    /**
+     * 2단계. id 목록으로 아이템·의류까지 한 번에 읽는다.
+     *
+     * id 가 이미 소유자 조건을 통과한 값이지만 `ownerId` 를 다시 받는다.
+     * 이 리포지토리에 소유자 조건 없는 조회를 하나라도 두면, 다음에 누군가
+     * "id 만 알면 되는" 자리에서 그걸 집어 쓰기 때문이다.
+     */
+    @Query(
+        """
+        select distinct c from Coordination c
+        left join fetch c.mutableItems i
+        left join fetch i.clothes
+        where c.ownerId = :ownerId and c.id in :ids
+        order by c.createdAt desc, c.id desc
+        """,
+    )
+    fun findAllByIdsWithItems(
+        @Param("ownerId") ownerId: Long,
+        @Param("ids") ids: Collection<Long>,
+    ): List<Coordination>
+
+    /**
+     * 아이템이 필요 없는 작업용(즐겨찾기 토글). 아이템까지 끌고 오면 쓰지도 않을
+     * 조인이 붙고, 더티 체킹 대상 컬렉션만 늘어난다.
+     */
+    fun findByIdAndOwnerId(id: Long, ownerId: Long): Coordination?
+
     /** `/media/…` 소유권 검사용. */
     fun existsByOwnerIdAndTryOnImagePath(ownerId: Long, tryOnImagePath: String): Boolean
 

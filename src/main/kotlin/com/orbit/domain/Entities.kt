@@ -110,6 +110,14 @@ class Coordination(
     @Column(name = "try_on_image_path", length = 200)
     var tryOnImagePath: String? = null
 
+    /**
+     * 즐겨찾기. 별도 테이블로 빼지 않은 이유는 이 앱에 공유가 없어 코디 하나당
+     * 값이 하나뿐이기 때문이다. 조인을 하나 더 만들면 목록 조회의 쿼리 수만 늘고,
+     * 이 저장소는 목록의 쿼리 수를 테스트로 고정하고 있다.
+     */
+    @Column(nullable = false)
+    var favorite: Boolean = false
+
     @OneToMany(
         mappedBy = "coordination",
         cascade = [CascadeType.ALL],

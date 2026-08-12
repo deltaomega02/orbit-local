@@ -90,8 +90,13 @@ data class PageResponse<T>(
     }
 }
 
-private const val DEFAULT_PAGE_SIZE = 20
-private const val MAX_PAGE_SIZE = 100
+/**
+ * 목록 API 들이 공유하는 페이지 크기. 엔드포인트마다 기본값과 상한이 다르면
+ * 클라이언트가 그걸 전부 외워야 한다. 상한이 없으면 `?size=1000000` 한 번으로
+ * 전체를 긁어갈 수 있어 페이지네이션 자체가 무의미해진다.
+ */
+internal const val DEFAULT_PAGE_SIZE = 20
+internal const val MAX_PAGE_SIZE = 100
 
 /**
  * 의류 CRUD.

@@ -7,6 +7,7 @@ import com.orbit.service.CoordinationService
 import com.orbit.service.OutfitAiService
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.NotEmpty
+import org.springframework.data.domain.PageRequest
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.security.core.annotation.AuthenticationPrincipal
@@ -36,6 +37,8 @@ data class CoordinationResponse(
     val items: List<CoordinationItemResponse>,
     /** 아직 만들지 않았으면 null. 만들려면 `POST /api/coordinations/{id}/tryon`. */
     val tryOnImageUrl: String?,
+    /** 즐겨찾기 여부. 토글은 `POST /api/coordinations/{id}/favorite`. */
+    val favorite: Boolean,
 ) {
     companion object {
         fun from(c: Coordination) = CoordinationResponse(
@@ -53,11 +56,15 @@ data class CoordinationResponse(
                 )
             },
             tryOnImageUrl = mediaUrl(c.tryOnImagePath),
+            favorite = c.favorite,
         )
     }
 }
 
 data class TryOnResponse(val tryOnImageUrl: String)
+
+/** 즐겨찾기 토글 결과. 클라이언트는 이 값으로 별 아이콘 상태를 맞춘다. */
+data class FavoriteResponse(val favorite: Boolean)
 
 /**
  * 중복 조합 응답. `retry: true` 는 "같은 요청을 그대로 다시 보내지 말고
@@ -116,4 +123,53 @@ class CoordinationController(
     @GetMapping("/today")
     fun today(@AuthenticationPrincipal user: AuthenticatedUser): List<CoordinationResponse> =
         service.todayCoordinations(user.id).map(CoordinationResponse::from)
+
+    /**
+     * 전체 기록. 최신순.
+     *
+     * `/today` 와 달리 페이지네이션이 있다. 오늘 만든 코디는 많아야 몇 건이지만
+     * 전체 기록은 매일 쌓여서 상한이 없기 때문이다. size 상한도 `/api/clothes` 와
+     * 같은 값으로 맞춰 둔다 — 목록마다 상한이 다르면 클라이언트가 그걸 또 외워야 한다.
+     */
+    @GetMapping
+    fun history(
+        @AuthenticationPrincipal user: AuthenticatedUser,
+        @RequestParam(defaultValue = "0") page: Int,
+        @RequestParam(defaultValue = "$DEFAULT_PAGE_SIZE") size: Int,
+    ): PageResponse<CoordinationResponse> {
+        val pageable = PageRequest.of(page.coerceAtLeast(0), size.coerceIn(1, MAX_PAGE_SIZE))
+        return PageResponse.from(service.history(user.id, pageable), CoordinationResponse::from)
+    }
+
+    @GetMapping("/{id}")
+    fun get(
+        @AuthenticationPrincipal user: AuthenticatedUser,
+        @PathVariable id: Long,
+    ): CoordinationResponse = CoordinationResponse.from(service.get(user.id, id))
+
+    /**
+     * 삭제. 가상 착용 이미지 파일도 함께 지운다([CoordinationService.delete]).
+     * 남의 코디와 없는 코디는 똑같이 404 다.
+     */
+    @DeleteMapping("/{id}")
+    fun delete(
+        @AuthenticationPrincipal user: AuthenticatedUser,
+        @PathVariable id: Long,
+    ): ResponseEntity<Void> {
+        service.delete(user.id, id)
+        return ResponseEntity.noContent().build()
+    }
+
+    /**
+     * 즐겨찾기 토글. 본문이 없다 — 서버가 현재 값을 뒤집으므로 클라이언트가
+     * 보낼 값이 없다. 두 번 누르면 반드시 원래대로 돌아온다.
+     *
+     * POST 인 이유: 같은 요청을 두 번 보내면 결과가 달라지므로 멱등하지 않다.
+     * PUT 은 멱등을 약속하는 메서드라 여기에 쓰면 거짓말이 된다.
+     */
+    @PostMapping("/{id}/favorite")
+    fun toggleFavorite(
+        @AuthenticationPrincipal user: AuthenticatedUser,
+        @PathVariable id: Long,
+    ): FavoriteResponse = FavoriteResponse(service.toggleFavorite(user.id, id))
 }
