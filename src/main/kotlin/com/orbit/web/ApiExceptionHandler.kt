@@ -1,6 +1,8 @@
 package com.orbit.web
 
 import com.orbit.security.InvalidTokenException
+import com.orbit.service.ClothesInUseException
+import com.orbit.service.ClothesNotFoundException
 import com.orbit.service.DuplicateCoordinationException
 import com.orbit.service.EmailAlreadyUsedException
 import com.orbit.service.InvalidCredentialsException
@@ -33,6 +35,16 @@ class ApiExceptionHandler {
     fun handleIllegalArgument(e: IllegalArgumentException): ResponseEntity<ErrorResponse> =
         ResponseEntity.badRequest()
             .body(ErrorResponse("invalid_request", e.message ?: "잘못된 요청입니다"))
+
+    @ExceptionHandler(ClothesNotFoundException::class)
+    fun handleClothesNotFound(e: ClothesNotFoundException): ResponseEntity<ErrorResponse> =
+        ResponseEntity.status(HttpStatus.NOT_FOUND)
+            .body(ErrorResponse("not_found", "의류를 찾을 수 없습니다"))
+
+    @ExceptionHandler(ClothesInUseException::class)
+    fun handleClothesInUse(e: ClothesInUseException): ResponseEntity<ErrorResponse> =
+        ResponseEntity.status(HttpStatus.CONFLICT)
+            .body(ErrorResponse("clothes_in_use", "코디에 사용 중인 의류는 삭제할 수 없습니다"))
 
     @ExceptionHandler(EmailAlreadyUsedException::class)
     fun handleEmailTaken(e: EmailAlreadyUsedException): ResponseEntity<ErrorResponse> =
