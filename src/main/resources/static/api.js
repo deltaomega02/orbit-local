@@ -236,6 +236,7 @@
         fd.append('name', data.name);
         fd.append('mainCategory', data.mainCategory);
         if (data.color) fd.append('color', data.color);
+        if (data.detail) fd.append('detail', data.detail);
         return request('/api/clothes', { method: 'POST', form: fd });
       },
       remove: function (id) {

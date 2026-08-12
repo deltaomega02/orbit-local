@@ -393,6 +393,7 @@
           '<p class="card__meta">' +
             '<span class="tag">' + esc(c.label) + '</span>' +
             (item.color ? '<span class="card__color">' + esc(item.color) + '</span>' : '') +
+            (item.detail ? '<span class="card__detail">' + esc(item.detail) + '</span>' : '') +
           '</p>' +
         '</div>' +
         '<button class="card__del" data-action="ask-delete" aria-label="' + esc(item.name) + ' 삭제">🗑</button>' +
@@ -595,6 +596,7 @@
           if (result.name && !$('#add-name').value) $('#add-name').value = result.name;
           if (result.mainCategory && CATEGORY[result.mainCategory]) setCategory(result.mainCategory);
           if (result.color && !$('#add-color').value) $('#add-color').value = result.color;
+          if (result.detail && !$('#add-detail').value) $('#add-detail').value = result.detail;
           analyzeNotice('사진을 읽어 자동으로 채웠어요. 확인하고 고쳐 주세요.', 'ok');
         }
       })
@@ -619,6 +621,7 @@
     e.preventDefault();
     var name = $('#add-name').value.trim();
     var color = $('#add-color').value.trim();
+    var detail = $('#add-detail').value.trim();
     setBanner($('#add-error'), '');
 
     if (!name) {
@@ -632,7 +635,8 @@
       image: state.addImage,
       name: name,
       mainCategory: currentCategory(),
-      color: color || null
+      color: color || null,
+      detail: detail || null
     }).then(function (created) {
       closeAddSheet();
       toast('‘' + created.name + '’ 을(를) 옷장에 담았어요.');

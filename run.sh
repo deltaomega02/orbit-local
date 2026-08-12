@@ -18,10 +18,26 @@ if [ -z "${GEMINI_API_KEY:-}" ]; then
   echo "!! GEMINI_API_KEY 가 없습니다. AI 기능(분석/추천/가상착용)은 503 이 됩니다."
 fi
 
-# JDK 21 을 찾는다. 시스템에 없으면 Homebrew 쪽을 본다.
-if ! command -v java >/dev/null 2>&1; then
-  BREW_JDK="$(brew --prefix openjdk@21 2>/dev/null || true)/libexec/openjdk.jdk/Contents/Home"
-  [ -d "$BREW_JDK" ] && export JAVA_HOME="$BREW_JDK" && export PATH="$JAVA_HOME/bin:$PATH"
+# JDK 를 찾는다.
+# macOS 에는 /usr/bin/java 스텁이 항상 존재해서 `command -v java` 는 런타임이
+# 없어도 성공한다. 그래서 존재가 아니라 **실제로 동작하는지**로 판단한다.
+if ! java -version >/dev/null 2>&1; then
+  for CAND in \
+    "$(/usr/libexec/java_home -v 21 2>/dev/null || true)" \
+    "$(brew --prefix openjdk@21 2>/dev/null || true)/libexec/openjdk.jdk/Contents/Home" \
+    "$(brew --prefix openjdk 2>/dev/null || true)/libexec/openjdk.jdk/Contents/Home"
+  do
+    if [ -n "$CAND" ] && [ -x "$CAND/bin/java" ]; then
+      export JAVA_HOME="$CAND"
+      export PATH="$JAVA_HOME/bin:$PATH"
+      break
+    fi
+  done
+fi
+
+if ! java -version >/dev/null 2>&1; then
+  echo "!! JDK 21 을 찾지 못했습니다. 'brew install openjdk@21' 후 다시 실행해 주세요." >&2
+  exit 1
 fi
 
 echo "→ http://localhost:8080 (종료는 Ctrl+C)"

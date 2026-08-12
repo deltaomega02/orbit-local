@@ -786,3 +786,16 @@ img { max-width: 100%; display: block; }
   .overlay__spinner,
   .banner__spinner { animation: spin 1.4s linear infinite !important; }
 }
+
+/* 소재·핏 — 코디 추천의 근거가 되는 값이라 카드에서도 보이게 둔다.
+   다만 이름·색보다 부차적이므로 한 줄로 자른다. */
+.card__detail {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--text-muted, #6b7280);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hint { font-weight: 400; font-size: 12px; color: var(--text-muted, #6b7280); }
