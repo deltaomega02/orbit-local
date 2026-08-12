@@ -2,7 +2,11 @@ spring:
   application:
     name: orbit-local
   datasource:
-    url: jdbc:h2:mem:orbit;DB_CLOSE_DELAY=-1;MODE=MySQL
+    # url 을 여기에 적지 않는다. OrbitEnvironmentPostProcessor 가 OS 별 데이터 경로
+    # 아래의 H2 **파일** 경로를 넣어 준다. 여기에 값을 박으면 yml 이 우선순위에서
+    # 이겨 버려서, 파일 모드 코드가 있어도 실제로는 계속 인메모리로 돌고
+    # 껐다 켤 때마다 옷장이 통째로 사라진다. (테스트는 test/application.yml 이
+    # 자기 url 을 따로 주므로 인메모리 그대로다)
     driver-class-name: org.h2.Driver
     username: sa
     password:

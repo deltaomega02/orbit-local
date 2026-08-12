@@ -95,7 +95,12 @@ object OrbitPaths {
         val base = databaseBase.toString().replace('\\', '/')
         // DB_CLOSE_ON_EXIT=FALSE — 종료 순서는 스프링 컨텍스트가 잡는다. H2 가 먼저
         // 셧다운 훅으로 닫아버리면 마지막 플러시가 "이미 닫힌 DB" 오류로 날아간다.
-        return "jdbc:h2:file:$base;MODE=MySQL;DB_CLOSE_ON_EXIT=FALSE"
+        // WRITE_DELAY=0 — 커밋을 모아뒀다 내리지 않고 즉시 디스크에 쓴다.
+        // H2 기본값(1초)이면 앱이 강제 종료되거나 전원이 끊길 때 마지막 1초의
+        // 쓰기가 사라진다. 실제로 그렇게 옷 4벌이 통째로 날아가는 것을 확인했다.
+        // 대가는 쓰기마다 디스크 동기화가 도는 것인데, 이 앱의 쓰기는 하루 몇 건이라
+        // 체감되지 않는다. 옷 한 벌을 잃는 쪽이 훨씬 비싸다.
+        return "jdbc:h2:file:$base;MODE=MySQL;DB_CLOSE_ON_EXIT=FALSE;WRITE_DELAY=0"
     }
 
     /**
