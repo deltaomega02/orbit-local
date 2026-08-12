@@ -4,256 +4,524 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="color-scheme" content="light dark" />
-  <meta name="description" content="옷장을 등록하고 오늘 입을 옷을 추천받는 개인용 코디 앱" />
-  <title>Orbit · 오늘 뭐 입지</title>
+  <meta name="description" content="매일의 착장을 번호와 날짜로 기록하는 스타일 저널" />
+  <meta name="theme-color" content="#faf7f2" media="(prefers-color-scheme: light)" />
+  <meta name="theme-color" content="#14120f" media="(prefers-color-scheme: dark)" />
+  <title>ORBIT · AI Stylist</title>
   <link rel="stylesheet" href="style.css" />
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>👕</text></svg>" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='9' fill='%23faf7f2'/><circle cx='16' cy='16.6' r='8.4' fill='none' stroke='%2317150f' stroke-width='2.4'/><circle cx='16' cy='5' r='2.8' fill='%235b4fd6'/></svg>" />
 </head>
 <body>
 
 <!-- ============================================================
-     1. 로그인 / 가입
+     아이콘 스프라이트
+     이모지는 폰트마다 모양·크기·기준선이 달라 UI 요소로 쓰면 정렬이 무너진다.
+     24px 그리드 · 선 굵기 1.5 · currentColor 로 통일해 직접 그린다.
+     스파클만 액센트색을 쓴다 — AI 를 뜻하는 유일한 아이콘이기 때문이다.
      ============================================================ -->
-<main class="screen screen--auth" id="screen-auth" hidden>
-  <div class="auth-card">
-    <div class="auth-brand">
-      <span class="auth-logo" aria-hidden="true">👕</span>
-      <h1>Orbit</h1>
-      <p class="auth-tagline">옷장을 등록해 두면, 오늘 입을 옷을 대신 골라 드려요.</p>
+<svg class="sprite" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg"><defs>
+
+  <symbol id="i-home" viewBox="0 0 24 24">
+    <path d="M3.5 10.4 12 3.7l8.5 6.7v8.2a1.7 1.7 0 0 1-1.7 1.7h-3.6v-6H8.8v6H5.2a1.7 1.7 0 0 1-1.7-1.7Z"/>
+  </symbol>
+  <symbol id="i-shirt" viewBox="0 0 24 24">
+    <path d="M8.9 3.3 4.7 5.4a2 2 0 0 0-1 1.3L2.8 10a.6.6 0 0 0 .4.7l2.6.8v7.9a1 1 0 0 0 1 1h10.4a1 1 0 0 0 1-1v-7.9l2.6-.8a.6.6 0 0 0 .4-.7l-.9-3.3a2 2 0 0 0-1-1.3l-4.2-2.1"/>
+    <path d="M8.9 3.3a3.1 3.1 0 0 0 6.2 0"/>
+  </symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5.2v13.6M5.2 12h13.6"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24">
+    <circle cx="12" cy="12" r="8.5"/><path d="M12 7.3V12l3.1 1.9"/>
+  </symbol>
+  <symbol id="i-more" viewBox="0 0 24 24">
+    <circle cx="5.5" cy="12" r="1.45" fill="currentColor" stroke="none"/>
+    <circle cx="12" cy="12" r="1.45" fill="currentColor" stroke="none"/>
+    <circle cx="18.5" cy="12" r="1.45" fill="currentColor" stroke="none"/>
+  </symbol>
+
+  <symbol id="i-back" viewBox="0 0 24 24"><path d="M14.5 5.3 7.8 12l6.7 6.7"/></symbol>
+  <symbol id="i-next" viewBox="0 0 24 24"><path d="M9.5 5.3 16.2 12l-6.7 6.7"/></symbol>
+  <symbol id="i-close" viewBox="0 0 24 24"><path d="M6.2 6.2 17.8 17.8M17.8 6.2 6.2 17.8"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="M5.2 12.5 9.8 17.1 18.8 6.9"/></symbol>
+
+  <symbol id="i-heart" viewBox="0 0 24 24">
+    <path d="M12 20.2s-8-4.7-8-10.1A4.55 4.55 0 0 1 12 7.1a4.55 4.55 0 0 1 8 3c0 5.4-8 10.1-8 10.1Z"/>
+  </symbol>
+  <symbol id="i-heart-fill" viewBox="0 0 24 24">
+    <path d="M12 20.2s-8-4.7-8-10.1A4.55 4.55 0 0 1 12 7.1a4.55 4.55 0 0 1 8 3c0 5.4-8 10.1-8 10.1Z" fill="currentColor"/>
+  </symbol>
+
+  <symbol id="i-sparkle" viewBox="0 0 24 24">
+    <path d="M13.05 2.7a.55.55 0 0 0-1.02 0l-1.36 3.7a2 2 0 0 1-1.19 1.19l-3.7 1.36a.55.55 0 0 0 0 1.02l3.7 1.36a2 2 0 0 1 1.19 1.19l1.36 3.7a.55.55 0 0 0 1.02 0l1.36-3.7a2 2 0 0 1 1.19-1.19l3.7-1.36a.55.55 0 0 0 0-1.02l-3.7-1.36a2 2 0 0 1-1.19-1.19Z" fill="currentColor" stroke="none"/>
+    <path d="M6.2 15.2a.38.38 0 0 0-.72 0l-.66 1.8a1.3 1.3 0 0 1-.77.77l-1.8.66a.38.38 0 0 0 0 .72l1.8.66a1.3 1.3 0 0 1 .77.77l.66 1.8a.38.38 0 0 0 .72 0l.66-1.8a1.3 1.3 0 0 1 .77-.77l1.8-.66a.38.38 0 0 0 0-.72l-1.8-.66a1.3 1.3 0 0 1-.77-.77Z" fill="currentColor" stroke="none"/>
+  </symbol>
+
+  <symbol id="i-camera" viewBox="0 0 24 24">
+    <path d="M3.3 8.9a2 2 0 0 1 2-2h1.9l1.3-2.2h7l1.3 2.2h1.9a2 2 0 0 1 2 2v8.3a2 2 0 0 1-2 2H5.3a2 2 0 0 1-2-2Z"/>
+    <circle cx="12" cy="13" r="3.4"/>
+  </symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24">
+    <path d="M4.7 6.6h14.6M9.4 6.6V4.9a1 1 0 0 1 1-1h3.2a1 1 0 0 1 1 1v1.7"/>
+    <path d="M6.7 6.6 7.5 19a1.2 1.2 0 0 0 1.2 1.1h6.6a1.2 1.2 0 0 0 1.2-1.1l.8-12.4"/>
+  </symbol>
+  <symbol id="i-person" viewBox="0 0 24 24">
+    <circle cx="12" cy="6.9" r="3.3"/>
+    <path d="M12 10.2v6.5M9.3 20.5 12 16.7l2.7 3.8M8.7 12.5 12 13.8l3.3-1.3"/>
+  </symbol>
+  <symbol id="i-palette" viewBox="0 0 24 24">
+    <path d="M12 3.3a8.7 8.7 0 0 0 0 17.4c1.3 0 2-.8 2-1.8 0-.5-.2-.9-.5-1.2-.3-.3-.5-.7-.5-1.1 0-1 .8-1.8 1.8-1.8h1.4a4.5 4.5 0 0 0 4.5-4.5c0-3.9-3.9-7-8.7-7Z"/>
+    <circle cx="7.8" cy="12.4" r="1.15" fill="currentColor" stroke="none"/>
+    <circle cx="9.7" cy="8.3" r="1.15" fill="currentColor" stroke="none"/>
+    <circle cx="14.3" cy="7.7" r="1.15" fill="currentColor" stroke="none"/>
+  </symbol>
+  <symbol id="i-key" viewBox="0 0 24 24">
+    <circle cx="7.7" cy="12" r="3.8"/>
+    <path d="M11.5 12h8.8M17.5 12v3.1M14.6 12v2.1"/>
+  </symbol>
+  <symbol id="i-external" viewBox="0 0 24 24">
+    <path d="M13.7 4.7h5.6v5.6M19.3 4.7 11 13"/>
+    <path d="M17.3 14.2v4.1a1.8 1.8 0 0 1-1.8 1.8H5.7a1.8 1.8 0 0 1-1.8-1.8V8.5a1.8 1.8 0 0 1 1.8-1.8h4.1"/>
+  </symbol>
+  <symbol id="i-eye" viewBox="0 0 24 24">
+    <path d="M2.7 12S6.3 5.9 12 5.9 21.3 12 21.3 12 17.7 18.1 12 18.1 2.7 12 2.7 12Z"/>
+    <circle cx="12" cy="12" r="2.8"/>
+  </symbol>
+  <symbol id="i-eye-off" viewBox="0 0 24 24">
+    <path d="M9.7 6.3A8.8 8.8 0 0 1 12 5.9c5.7 0 9.3 6.1 9.3 6.1a17 17 0 0 1-3 3.7M6.1 8.2A17.3 17.3 0 0 0 2.7 12S6.3 18.1 12 18.1a8.6 8.6 0 0 0 3.1-.6"/>
+    <path d="M10 10a2.8 2.8 0 0 0 4 4M4.2 4.2l15.6 15.6"/>
+  </symbol>
+
+</defs></svg>
+
+
+<!-- ============================================================
+     로그인 / 가입
+     ============================================================ -->
+<main class="auth" id="screen-auth" hidden>
+  <div class="auth__inner">
+    <div class="brandmark brandmark--auth">
+      <p class="wordmark">ORBIT</p>
+      <p class="wordmark__sub">AI Stylist</p>
     </div>
 
-    <div class="tabs-inline" role="tablist" aria-label="로그인 또는 회원가입">
-      <button class="tab-inline is-active" role="tab" id="tab-login"
-              aria-selected="true" aria-controls="form-login" data-auth-tab="login">로그인</button>
-      <button class="tab-inline" role="tab" id="tab-signup"
-              aria-selected="false" aria-controls="form-signup" data-auth-tab="signup">회원가입</button>
+    <p class="auth__lede">매일 입은 옷을<br />번호와 날짜로 기록해요.</p>
+
+    <div class="auth__card">
+      <div class="segmented" role="tablist" aria-label="로그인 또는 회원가입">
+        <button class="segmented__item is-active" role="tab" id="tab-login"
+                aria-selected="true" aria-controls="form-login" data-auth-tab="login">로그인</button>
+        <button class="segmented__item" role="tab" id="tab-signup"
+                aria-selected="false" aria-controls="form-signup" data-auth-tab="signup">회원가입</button>
+      </div>
+
+      <div class="note note--error" id="auth-error" role="alert" hidden></div>
+      <div class="note" id="auth-notice" role="status" hidden></div>
+
+      <form class="form" id="form-login" role="tabpanel" aria-labelledby="tab-login" novalidate>
+        <div class="field">
+          <label for="login-email">이메일</label>
+          <input type="email" id="login-email" autocomplete="username" inputmode="email"
+                 required placeholder="orbit@example.com" />
+        </div>
+        <div class="field">
+          <label for="login-password">비밀번호</label>
+          <input type="password" id="login-password" autocomplete="current-password"
+                 required placeholder="비밀번호" />
+        </div>
+        <button type="submit" class="btn btn--primary btn--block">
+          <span class="btn__spinner" aria-hidden="true"></span>
+          <span class="btn__text">로그인</span>
+        </button>
+      </form>
+
+      <form class="form" id="form-signup" role="tabpanel" aria-labelledby="tab-signup" novalidate hidden>
+        <div class="field">
+          <label for="signup-email">이메일</label>
+          <input type="email" id="signup-email" autocomplete="username" inputmode="email"
+                 required placeholder="orbit@example.com" />
+        </div>
+        <div class="field">
+          <label for="signup-password">비밀번호</label>
+          <input type="password" id="signup-password" autocomplete="new-password"
+                 required minlength="8" placeholder="8자 이상" />
+          <p class="field__hint">8자 이상으로 정해 주세요.</p>
+        </div>
+        <button type="submit" class="btn btn--primary btn--block">
+          <span class="btn__spinner" aria-hidden="true"></span>
+          <span class="btn__text">가입하기</span>
+        </button>
+      </form>
     </div>
-
-    <div class="banner banner--error" id="auth-error" role="alert" hidden></div>
-    <div class="banner banner--info" id="auth-notice" role="status" hidden></div>
-
-    <!-- 로그인 -->
-    <form class="form" id="form-login" role="tabpanel" aria-labelledby="tab-login" novalidate>
-      <div class="field">
-        <label for="login-email">이메일</label>
-        <input type="email" id="login-email" name="email" autocomplete="username"
-               inputmode="email" required placeholder="orbit@example.com" />
-      </div>
-      <div class="field">
-        <label for="login-password">비밀번호</label>
-        <input type="password" id="login-password" name="password"
-               autocomplete="current-password" required placeholder="비밀번호" />
-      </div>
-      <button type="submit" class="btn btn--primary btn--block" data-label="로그인">
-        <span class="btn__spinner" aria-hidden="true"></span>
-        <span class="btn__text">로그인</span>
-      </button>
-    </form>
-
-    <!-- 회원가입 -->
-    <form class="form" id="form-signup" role="tabpanel" aria-labelledby="tab-signup" novalidate hidden>
-      <div class="field">
-        <label for="signup-email">이메일</label>
-        <input type="email" id="signup-email" name="email" autocomplete="username"
-               inputmode="email" required placeholder="orbit@example.com" />
-      </div>
-      <div class="field">
-        <label for="signup-password">비밀번호</label>
-        <input type="password" id="signup-password" name="password"
-               autocomplete="new-password" required minlength="8" placeholder="8자 이상" />
-        <p class="field__hint">8자 이상으로 정해 주세요.</p>
-      </div>
-      <button type="submit" class="btn btn--primary btn--block" data-label="가입하기">
-        <span class="btn__spinner" aria-hidden="true"></span>
-        <span class="btn__text">가입하기</span>
-      </button>
-    </form>
   </div>
 </main>
 
 
 <!-- ============================================================
-     앱 셸 (로그인 후)
+     앱 셸
      ============================================================ -->
 <div id="app-shell" hidden>
-  <header class="topbar">
+
+  <header class="topbar" id="topbar">
     <div class="topbar__inner">
-      <span class="topbar__brand"><span aria-hidden="true">👕</span> Orbit</span>
-      <span class="topbar__title" id="topbar-title">내 옷장</span>
+      <button class="iconbtn topbar__back" id="btn-back" type="button" aria-label="뒤로" hidden>
+        <svg class="ico" aria-hidden="true"><use href="#i-back" /></svg>
+      </button>
+
+      <div class="brandmark" id="topbar-brand">
+        <p class="wordmark">ORBIT</p>
+        <p class="wordmark__sub">AI Stylist</p>
+      </div>
+
+      <h1 class="topbar__title" id="topbar-title" hidden></h1>
+
+      <button class="iconbtn topbar__action" id="btn-topbar-action" type="button" hidden>
+        <svg class="ico" aria-hidden="true"><use href="#i-heart" /></svg>
+      </button>
     </div>
   </header>
 
-  <div class="content">
+  <div class="views" id="views">
 
-    <!-- ========================================================
-         2. 옷장
-         ======================================================== -->
-    <main class="screen" id="screen-closet" hidden>
-      <div class="section-head">
-        <div>
-          <h2>내 옷장</h2>
-          <p class="section-sub" id="closet-count" hidden></p>
+    <!-- ====================== 홈 ====================== -->
+    <section class="view" id="view-home" tabindex="-1" aria-label="홈" hidden>
+      <h1 class="vh">오늘</h1>
+
+      <div id="home-skeleton" aria-hidden="true">
+        <div class="sk sk--label"></div>
+        <div class="sk sk--look"></div>
+        <div class="sk sk--row"></div>
+      </div>
+
+      <div id="home-body" hidden>
+
+        <!-- 오늘 -->
+        <section class="block">
+          <!-- LOOK 카드가 자기 번호를 이미 달고 나오므로, 카드가 있을 때는 이 라벨을 접는다.
+               인덱스 라벨이 두 줄로 겹치면 서명이 아니라 실수처럼 보인다. -->
+          <p class="indexlabel" id="home-today-label">Today</p>
+          <div id="home-today"></div>
+        </section>
+
+        <!-- 주 행동 -->
+        <section class="block">
+          <button class="action" id="btn-recommend" type="button">
+            <span class="action__icon accent"><svg class="ico" aria-hidden="true"><use href="#i-sparkle" /></svg></span>
+            <span class="action__text">
+              <span class="action__title">AI 추천 받기</span>
+              <span class="action__sub" id="recommend-sub">옷장을 보고 오늘의 조합을 골라 드려요</span>
+            </span>
+            <span class="action__tail" aria-hidden="true">
+              <svg class="ico" aria-hidden="true"><use href="#i-next" /></svg>
+            </span>
+            <span class="action__spinner" aria-hidden="true"></span>
+          </button>
+
+          <div class="note" id="home-retry" role="status" hidden>
+            <span class="note__spinner" aria-hidden="true"></span>
+            <span id="home-retry-msg"></span>
+          </div>
+          <div class="note note--error" id="home-error" role="alert" hidden>
+            <span class="note__body" id="home-error-msg"></span>
+            <button class="btn btn--ghost btn--tiny" id="home-error-action" type="button" hidden></button>
+          </div>
+        </section>
+
+        <!-- 최근 -->
+        <section class="block" id="home-recent-section" hidden>
+          <div class="block__head">
+            <p class="indexlabel">Archive</p>
+            <button class="linkbtn" id="btn-see-all" type="button">
+              <span>전체 보기</span>
+              <svg class="ico ico--sm" aria-hidden="true"><use href="#i-next" /></svg>
+            </button>
+          </div>
+          <h2 class="block__title">최근 기록</h2>
+          <div class="looks looks--grid" id="home-recent"></div>
+        </section>
+
+        <!-- 옷장이 비었을 때 -->
+        <section class="block" id="home-onboard" hidden>
+          <div class="empty">
+            <p class="indexlabel">Wardrobe</p>
+            <h2 class="empty__title">옷장을 먼저 채워 주세요</h2>
+            <p class="empty__desc">상의와 하의가 하나씩만 있어도 첫 기록을 남길 수 있어요.</p>
+            <button class="btn btn--primary" data-open-add type="button">첫 옷 등록하기</button>
+          </div>
+        </section>
+      </div>
+    </section>
+
+
+    <!-- ====================== 옷장 ====================== -->
+    <section class="view" id="view-closet" tabindex="-1" aria-label="옷장" hidden>
+      <div class="pagehead">
+        <p class="indexlabel">Wardrobe</p>
+        <div class="pagehead__row">
+          <h1 class="pagehead__title">내 옷장</h1>
+          <button class="btn btn--ghost btn--tiny" data-open-add type="button">
+            <svg class="ico ico--sm" aria-hidden="true"><use href="#i-plus" /></svg>
+            <span class="btn__text">옷 추가</span>
+          </button>
         </div>
-        <button class="btn btn--primary" id="btn-open-add">
-          <span class="btn__text">+ 옷 추가</span>
-        </button>
+        <p class="num" id="closet-count" hidden></p>
       </div>
 
-      <div class="chips" role="group" aria-label="카테고리 필터">
-        <button class="chip is-active" data-filter="ALL" aria-pressed="true">전체</button>
-        <button class="chip" data-filter="TOP" aria-pressed="false">상의</button>
-        <button class="chip" data-filter="BOTTOM" aria-pressed="false">하의</button>
-        <button class="chip" data-filter="OUTER" aria-pressed="false">아우터</button>
+      <div class="chips" role="group" aria-label="카테고리 필터" id="closet-filters">
+        <button class="chip is-active" data-filter="ALL" aria-pressed="true" type="button">전체</button>
+        <button class="chip" data-filter="TOP" aria-pressed="false" type="button">상의</button>
+        <button class="chip" data-filter="BOTTOM" aria-pressed="false" type="button">하의</button>
+        <button class="chip" data-filter="OUTER" aria-pressed="false" type="button">아우터</button>
       </div>
 
-      <!-- 로딩 (스켈레톤) -->
-      <div class="grid" id="closet-skeleton" hidden aria-hidden="true">
-        <div class="card skeleton-card"></div>
-        <div class="card skeleton-card"></div>
-        <div class="card skeleton-card"></div>
-        <div class="card skeleton-card"></div>
+      <div class="itemgrid" id="closet-skeleton" aria-hidden="true" hidden>
+        <div class="sk sk--item"></div><div class="sk sk--item"></div>
+        <div class="sk sk--item"></div><div class="sk sk--item"></div>
       </div>
 
-      <!-- 에러 -->
       <div class="state state--error" id="closet-error" role="alert" hidden>
         <p class="state__title" id="closet-error-msg"></p>
-        <button class="btn btn--ghost" id="btn-closet-retry">다시 불러오기</button>
+        <button class="btn btn--ghost" id="btn-closet-retry" type="button">다시 불러오기</button>
       </div>
 
-      <!-- 빈 옷장: 무엇을 해야 하는지 알려준다 -->
-      <div class="state state--empty" id="closet-empty" hidden>
-        <div class="state__art" aria-hidden="true">
-          <span class="state__art-item">👕</span>
-          <span class="state__art-item">👖</span>
-          <span class="state__art-item">🧥</span>
-        </div>
-        <h3 class="state__title">옷장이 아직 비어 있어요</h3>
-        <p class="state__desc">옷을 3벌만 등록해도 바로 코디를 추천받을 수 있어요.</p>
-        <ol class="steps">
-          <li><strong>사진을 고르면</strong> 이름·카테고리·색을 자동으로 채워 드려요.</li>
-          <li><strong>확인하고 저장</strong>하면 옷장에 담겨요.</li>
-          <li><strong>상의·하의가 하나씩</strong> 있으면 오늘의 코디를 받을 수 있어요.</li>
-        </ol>
-        <button class="btn btn--primary" data-open-add>첫 옷 등록하기</button>
+      <div class="empty" id="closet-empty" hidden>
+        <p class="indexlabel">Empty</p>
+        <h3 class="empty__title">아직 등록한 옷이 없어요</h3>
+        <p class="empty__desc">사진 한 장이면 이름·카테고리·색까지 자동으로 채워 드려요.</p>
+        <button class="btn btn--primary" data-open-add type="button">첫 옷 등록하기</button>
       </div>
 
-      <!-- 필터 결과 없음 -->
-      <div class="state state--empty state--slim" id="closet-empty-filter" hidden>
-        <h3 class="state__title">이 카테고리에는 아직 옷이 없어요</h3>
-        <p class="state__desc">다른 카테고리를 보거나, 새로 등록해 보세요.</p>
-        <button class="btn btn--ghost" data-open-add>옷 추가하기</button>
+      <div class="empty" id="closet-empty-filter" hidden>
+        <p class="indexlabel">Empty</p>
+        <h3 class="empty__title">이 카테고리는 비어 있어요</h3>
+        <p class="empty__desc">다른 카테고리를 보거나, 새로 등록해 보세요.</p>
+        <button class="btn btn--ghost" data-open-add type="button">옷 추가하기</button>
       </div>
 
-      <div class="grid" id="closet-grid"></div>
+      <div class="itemgrid" id="closet-grid"></div>
 
       <div class="more" id="closet-more" hidden>
-        <button class="btn btn--ghost btn--block" id="btn-load-more" data-label="더 보기">
+        <button class="btn btn--ghost btn--block" id="btn-load-more" type="button">
           <span class="btn__spinner" aria-hidden="true"></span>
           <span class="btn__text">더 보기</span>
         </button>
       </div>
-    </main>
+    </section>
 
 
-    <!-- ========================================================
-         3. 오늘의 코디
-         ======================================================== -->
-    <main class="screen" id="screen-coord" hidden>
-      <div class="section-head">
-        <div>
-          <h2>오늘의 코디</h2>
-          <p class="section-sub" id="coord-date"></p>
+    <!-- ====================== 기록 ====================== -->
+    <section class="view" id="view-history" tabindex="-1" aria-label="기록" hidden>
+      <div class="pagehead">
+        <p class="indexlabel">Archive</p>
+        <div class="pagehead__row">
+          <h1 class="pagehead__title">코디 기록</h1>
         </div>
-        <button class="btn btn--primary" id="btn-recommend" data-label="추천받기">
-          <span class="btn__spinner" aria-hidden="true"></span>
-          <span class="btn__text">추천받기</span>
+        <p class="num" id="history-count" hidden></p>
+      </div>
+
+      <div class="segmented" id="history-filter" role="group" aria-label="기록 필터">
+        <button class="segmented__item is-active" data-hfilter="ALL" aria-pressed="true" type="button">전체</button>
+        <button class="segmented__item" data-hfilter="FAV" aria-pressed="false" type="button">즐겨찾기</button>
+      </div>
+
+      <div id="history-skeleton" aria-hidden="true" hidden>
+        <div class="sk sk--look"></div><div class="sk sk--look"></div>
+      </div>
+
+      <div class="state state--error" id="history-error" role="alert" hidden>
+        <p class="state__title" id="history-error-msg"></p>
+        <button class="btn btn--ghost" id="btn-history-retry" type="button">다시 불러오기</button>
+      </div>
+
+      <div class="empty" id="history-empty" hidden>
+        <p class="indexlabel">Empty</p>
+        <h3 class="empty__title" id="history-empty-title">아직 기록이 없어요</h3>
+        <p class="empty__desc" id="history-empty-desc">추천을 받으면 여기에 한 장씩 쌓여요.</p>
+        <button class="btn btn--primary" id="btn-history-go-home" type="button">추천 받으러 가기</button>
+      </div>
+
+      <div class="looks" id="history-list"></div>
+
+      <nav class="pager" id="history-pager" aria-label="페이지" hidden>
+        <button class="btn btn--ghost btn--tiny" id="btn-page-prev" type="button">
+          <svg class="ico ico--sm" aria-hidden="true"><use href="#i-back" /></svg>
+          <span class="btn__text">이전</span>
         </button>
-      </div>
-
-      <!-- 재시도 중 안내 (409 duplicate) -->
-      <div class="banner banner--info" id="coord-retry" role="status" hidden>
-        <span class="banner__spinner" aria-hidden="true"></span>
-        <span id="coord-retry-msg">다른 조합을 찾는 중…</span>
-      </div>
-
-      <div class="banner banner--error" id="coord-error" role="alert" hidden>
-        <span id="coord-error-msg"></span>
-        <button class="btn btn--tiny" id="btn-coord-error-action" hidden></button>
-      </div>
-
-      <div class="grid grid--wide" id="coord-skeleton" hidden aria-hidden="true">
-        <div class="card skeleton-card skeleton-card--tall"></div>
-      </div>
-
-      <div class="state state--empty" id="coord-empty" hidden>
-        <div class="state__art" aria-hidden="true"><span class="state__art-item">✨</span></div>
-        <h3 class="state__title">오늘은 아직 추천을 받지 않았어요</h3>
-        <p class="state__desc">‘추천받기’를 누르면 옷장에 있는 옷으로 오늘의 조합을 만들어 드려요.</p>
-      </div>
-
-      <div class="coord-list" id="coord-list"></div>
-    </main>
+        <p class="num" id="history-pager-label" aria-live="polite"></p>
+        <button class="btn btn--ghost btn--tiny" id="btn-page-next" type="button">
+          <span class="btn__text">다음</span>
+          <svg class="ico ico--sm" aria-hidden="true"><use href="#i-next" /></svg>
+        </button>
+      </nav>
+    </section>
 
 
-    <!-- ========================================================
-         4. 설정 / 프로필
-         ======================================================== -->
-    <main class="screen" id="screen-settings" hidden>
-      <div class="section-head">
-        <div>
-          <h2>설정</h2>
-          <p class="section-sub" id="settings-email"></p>
+    <!-- ====================== 더보기 ====================== -->
+    <section class="view" id="view-more" tabindex="-1" aria-label="더보기" hidden>
+      <div class="pagehead">
+        <p class="indexlabel">Settings</p>
+        <div class="pagehead__row">
+          <h1 class="pagehead__title">더보기</h1>
         </div>
+        <p class="num" id="more-email"></p>
       </div>
 
+      <!-- AI 연결 -->
+      <section class="panel" id="panel-key">
+        <p class="indexlabel">AI Connection</p>
+        <h3 class="panel__title">AI 연결</h3>
+        <p class="panel__desc">코디 추천·사진 인식·입어보기에 쓰여요.</p>
+
+        <div class="panel__body" id="key-connected" hidden>
+          <p class="keyline">
+            <span class="keyline__badge"><svg class="ico ico--sm" aria-hidden="true"><use href="#i-check" /></svg> 연결됨</span>
+            <code class="num" id="key-masked"></code>
+          </p>
+          <div class="btnrow">
+            <button class="btn btn--ghost" id="btn-key-change" type="button">키 바꾸기</button>
+            <button class="btn btn--quiet" id="btn-key-remove" type="button">
+              <span class="btn__spinner" aria-hidden="true"></span>
+              <span class="btn__text">연결 해제</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="panel__body" id="key-setup">
+          <p class="prose">
+            Orbit이 옷을 알아보고 코디를 골라 주려면 Google AI Studio에서 받는
+            무료 키가 하나 필요해요. 처음 한 번만 하면 됩니다.
+          </p>
+          <ol class="steps">
+            <li>아래 버튼으로 Google AI Studio를 열어요.</li>
+            <li>구글 계정으로 들어가 <b>Create API key</b>를 눌러요.</li>
+            <li>만들어진 긴 글자열을 복사해서 아래에 붙여넣어요.</li>
+          </ol>
+          <a class="btn btn--ghost btn--block" id="link-aistudio"
+             href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer">
+            <span class="btn__text">Google AI Studio 열기</span>
+            <svg class="ico ico--sm" aria-hidden="true"><use href="#i-external" /></svg>
+          </a>
+
+          <form class="form" id="form-key" novalidate>
+            <div class="field">
+              <label for="key-input">받은 키 붙여넣기</label>
+              <div class="inputrow">
+                <input type="password" id="key-input" autocomplete="off" spellcheck="false"
+                       placeholder="AIza…" />
+                <button class="iconbtn inputrow__btn" id="btn-key-reveal" type="button"
+                        aria-label="입력한 키 보기" aria-pressed="false">
+                  <svg class="ico ico--sm" aria-hidden="true"><use href="#i-eye" /></svg>
+                </button>
+              </div>
+              <p class="field__hint">붙여넣은 키는 이 기기의 Orbit에만 저장돼요.</p>
+            </div>
+            <div class="note note--error" id="key-error" role="alert" hidden></div>
+            <button type="submit" class="btn btn--primary btn--block">
+              <span class="btn__spinner" aria-hidden="true"></span>
+              <span class="btn__text">연결하기</span>
+            </button>
+          </form>
+        </div>
+      </section>
+
+      <!-- 전신 사진 -->
       <section class="panel">
+        <p class="indexlabel">Body Photo</p>
         <h3 class="panel__title">전신 사진</h3>
-        <p class="panel__desc">가상 착용(‘입어보기’)에 쓰여요. 전신이 다 나오게, 밝은 곳에서 찍은 사진이 가장 잘 나와요.</p>
+        <p class="panel__desc">‘입어보기’에 쓰여요. 전신이 다 나오고 밝은 곳에서 찍은 사진이 가장 잘 나와요.</p>
 
-        <div class="banner banner--error" id="body-photo-error" role="alert" hidden></div>
+        <div class="panel__body">
+          <div class="note note--error" id="body-photo-error" role="alert" hidden></div>
 
-        <div class="body-photo">
-          <div class="body-photo__preview" id="body-photo-preview">
-            <div class="body-photo__placeholder" id="body-photo-placeholder">
-              <span aria-hidden="true">🧍</span>
-              <span class="body-photo__placeholder-text">아직 등록된 사진이 없어요</span>
+          <div class="bodyphoto">
+            <div class="frame frame--body" id="body-photo-preview">
+              <span class="frame__initial" id="body-photo-placeholder" aria-hidden="true">NONE</span>
+              <span class="vh" id="body-photo-status">등록된 전신 사진 없음</span>
+              <img id="body-photo-img" alt="등록된 전신 사진" hidden />
+              <span class="overlay" id="body-photo-loading" hidden>
+                <span class="overlay__spinner" aria-hidden="true"></span>
+                <span>올리는 중…</span>
+              </span>
             </div>
-            <img id="body-photo-img" alt="등록된 전신 사진" hidden />
-            <div class="overlay" id="body-photo-loading" hidden>
-              <span class="overlay__spinner" aria-hidden="true"></span>
-              <span>올리는 중…</span>
+            <div class="bodyphoto__side">
+              <button type="button" class="btn btn--ghost" id="body-photo-label">
+                <svg class="ico ico--sm" aria-hidden="true"><use href="#i-camera" /></svg>
+                <span class="btn__text">사진 선택</span>
+              </button>
+              <input type="file" id="body-photo-input" accept="image/*" class="vh"
+                     aria-label="전신 사진 파일 선택" />
+              <p class="field__hint">JPG · PNG · 10MB 이하</p>
             </div>
-          </div>
-
-          <div class="body-photo__actions">
-            <!-- label 로 파일 입력을 감싸면 키보드로 열 수 없어서 button + click() 을 쓴다 -->
-            <button type="button" class="btn btn--primary" id="body-photo-label">사진 선택</button>
-            <input type="file" id="body-photo-input" accept="image/*" class="visually-hidden"
-                   aria-label="전신 사진 파일 선택" />
-            <p class="field__hint">JPG · PNG · 10MB 이하</p>
           </div>
         </div>
       </section>
 
+      <!-- 스타일 선호도 -->
       <section class="panel">
-        <h3 class="panel__title">계정</h3>
-        <button class="btn btn--danger-ghost" id="btn-logout">로그아웃</button>
+        <p class="indexlabel">Preference</p>
+        <h3 class="panel__title">스타일 선호도</h3>
+        <p class="panel__desc">평소 좋아하는 분위기를 적어 두면 추천에 반영돼요.</p>
+
+        <div class="panel__body">
+          <form class="form" id="form-style">
+            <div class="field">
+              <label for="style-input" class="vh">스타일 선호도</label>
+              <textarea id="style-input" rows="3" maxlength="200"
+                        placeholder="예) 무채색 위주로 깔끔하게. 카고팬츠 자주 넣어 주세요."></textarea>
+              <p class="field__hint num"><span id="style-count">0</span> / 200</p>
+            </div>
+            <div class="note note--error" id="style-error" role="alert" hidden></div>
+            <button type="submit" class="btn btn--primary btn--block" id="btn-style-save">
+              <span class="btn__spinner" aria-hidden="true"></span>
+              <span class="btn__text">저장</span>
+            </button>
+          </form>
+        </div>
       </section>
 
-      <p class="foot-note">Orbit · 로컬에서만 도는 개인용 코디 앱</p>
-    </main>
+      <!-- 옷장 통계 -->
+      <section class="panel" id="panel-stats" hidden>
+        <p class="indexlabel">Wardrobe Index</p>
+        <h3 class="panel__title">옷장 통계</h3>
+        <div class="panel__body" id="stats-body"></div>
+      </section>
 
-  </div><!-- /.content -->
+      <p class="footnote">ORBIT · AI Stylist</p>
+    </section>
 
-  <nav class="tabbar" aria-label="화면 전환">
-    <button class="tabbar__item is-active" data-nav="closet" aria-current="page">
-      <span class="tabbar__icon" aria-hidden="true">🗄️</span><span class="tabbar__label">옷장</span>
+
+    <!-- ====================== 코디 상세 ====================== -->
+    <section class="view view--detail" id="view-coord" tabindex="-1" aria-label="코디 상세" hidden>
+      <div id="coord-skeleton" aria-hidden="true" hidden>
+        <div class="sk sk--label"></div><div class="sk sk--look"></div><div class="sk sk--row"></div>
+      </div>
+      <div id="coord-detail"></div>
+    </section>
+
+
+    <!-- ====================== 옷 상세 ====================== -->
+    <section class="view view--detail" id="view-item" tabindex="-1" aria-label="옷 상세" hidden>
+      <div id="item-skeleton" aria-hidden="true" hidden>
+        <div class="sk sk--label"></div><div class="sk sk--look"></div><div class="sk sk--row"></div>
+      </div>
+      <div id="item-detail"></div>
+    </section>
+
+  </div><!-- /.views -->
+
+  <nav class="tabbar" id="tabbar" aria-label="주요 화면">
+    <button class="tabbar__item is-active" data-nav="home" type="button" aria-current="page">
+      <svg class="ico" aria-hidden="true"><use href="#i-home" /></svg><span class="vh">홈</span>
     </button>
-    <button class="tabbar__item" data-nav="coord">
-      <span class="tabbar__icon" aria-hidden="true">✨</span><span class="tabbar__label">오늘의 코디</span>
+    <button class="tabbar__item" data-nav="closet" type="button">
+      <svg class="ico" aria-hidden="true"><use href="#i-shirt" /></svg><span class="vh">옷장</span>
     </button>
-    <button class="tabbar__item" data-nav="settings">
-      <span class="tabbar__icon" aria-hidden="true">⚙️</span><span class="tabbar__label">설정</span>
+    <button class="tabbar__item" data-nav="add" type="button">
+      <svg class="ico" aria-hidden="true"><use href="#i-plus" /></svg><span class="vh">옷 추가</span>
+    </button>
+    <button class="tabbar__item" data-nav="history" type="button">
+      <svg class="ico" aria-hidden="true"><use href="#i-clock" /></svg><span class="vh">기록</span>
+    </button>
+    <button class="tabbar__item" data-nav="more" type="button">
+      <svg class="ico" aria-hidden="true"><use href="#i-more" /></svg><span class="vh">더보기</span>
     </button>
   </nav>
 </div><!-- /#app-shell -->
@@ -263,41 +531,47 @@
      옷 추가 시트
      ============================================================ -->
 <dialog class="sheet" id="add-sheet" aria-labelledby="add-sheet-title">
-  <form method="dialog" class="sheet__close-form">
-    <button class="sheet__close" aria-label="닫기" value="cancel">✕</button>
+  <div class="sheet__grip" aria-hidden="true"></div>
+  <form method="dialog" class="sheet__closeform">
+    <button class="iconbtn sheet__close" aria-label="닫기" value="cancel">
+      <svg class="ico ico--sm" aria-hidden="true"><use href="#i-close" /></svg>
+    </button>
   </form>
 
+  <p class="indexlabel">New Item</p>
   <h2 class="sheet__title" id="add-sheet-title">옷 추가</h2>
   <p class="sheet__desc">사진을 고르면 이름·카테고리·색을 자동으로 채워 드려요. 사진 없이 직접 입력해도 괜찮아요.</p>
 
-  <div class="banner banner--error" id="add-error" role="alert" hidden></div>
-  <div class="banner banner--warn" id="analyze-warn" role="status" hidden></div>
+  <div class="note note--error" id="add-error" role="alert" hidden></div>
+  <div class="note" id="analyze-warn" role="status" hidden></div>
 
   <form class="form" id="form-add" novalidate>
     <div class="picker">
-      <div class="picker__thumb" id="add-thumb">
-        <span class="picker__thumb-empty" aria-hidden="true">📷</span>
+      <button type="button" class="frame frame--pick" id="add-image-label" aria-label="옷 사진 고르기">
+        <span class="picker__empty" id="add-thumb-empty">
+          <svg class="ico" aria-hidden="true"><use href="#i-camera" /></svg>
+          <span class="indexlabel">Add Photo</span>
+        </span>
         <img id="add-thumb-img" alt="" hidden />
-        <div class="overlay" id="analyze-loading" hidden>
+        <span class="overlay" id="analyze-loading" hidden>
           <span class="overlay__spinner" aria-hidden="true"></span>
-          <span>분석 중…</span>
-        </div>
-      </div>
+          <span>읽는 중…</span>
+        </span>
+      </button>
+      <input type="file" id="add-image" accept="image/*" class="vh" aria-label="옷 사진 파일 선택" />
       <div class="picker__side">
-        <button type="button" class="btn btn--ghost btn--block" id="add-image-label">사진 고르기</button>
-        <input type="file" id="add-image" accept="image/*" class="visually-hidden"
-               aria-label="옷 사진 파일 선택" />
-        <button type="button" class="btn btn--tiny btn--quiet" id="btn-clear-image" hidden>사진 빼기</button>
+        <p class="picker__hint">옷만 크게 나오도록 찍으면 더 잘 읽어요.</p>
+        <button type="button" class="btn btn--quiet btn--tiny" id="btn-clear-image" hidden>사진 빼기</button>
       </div>
     </div>
 
     <div class="field">
-      <label for="add-name">이름 <span class="req">*</span></label>
+      <label for="add-name">이름 <span class="req" aria-hidden="true">*</span></label>
       <input type="text" id="add-name" required maxlength="40" placeholder="예) 회색 맨투맨" />
     </div>
 
     <fieldset class="field">
-      <legend>카테고리 <span class="req">*</span></legend>
+      <legend>카테고리 <span class="req" aria-hidden="true">*</span></legend>
       <div class="segmented" id="add-category">
         <button type="button" class="segmented__item is-active" data-cat="TOP" aria-pressed="true">상의</button>
         <button type="button" class="segmented__item" data-cat="BOTTOM" aria-pressed="false">하의</button>
@@ -311,14 +585,14 @@
     </div>
 
     <div class="field">
-      <label for="add-detail">소재 · 핏 <span class="hint">코디 추천에 쓰여요</span></label>
-      <input type="text" id="add-detail" maxlength="80"
-             placeholder="예) 도톰한 기모 소재의 오버핏 (선택)" />
+      <label for="add-detail">소재 · 핏</label>
+      <input type="text" id="add-detail" maxlength="80" placeholder="예) 도톰한 기모 소재의 오버핏 (선택)" />
+      <p class="field__hint">추천할 때 함께 쓰여요.</p>
     </div>
 
     <div class="sheet__actions">
       <button type="button" class="btn btn--ghost" id="btn-add-cancel">취소</button>
-      <button type="submit" class="btn btn--primary" id="btn-add-submit" data-label="저장">
+      <button type="submit" class="btn btn--primary" id="btn-add-submit">
         <span class="btn__spinner" aria-hidden="true"></span>
         <span class="btn__text">저장</span>
       </button>
@@ -327,13 +601,41 @@
 </dialog>
 
 
-<!-- 전역 로딩 (첫 부팅 시 세션 확인) -->
+<!-- ============================================================
+     AI 연결 안내 시트 — 오류가 아니라 안내다.
+     ============================================================ -->
+<dialog class="sheet sheet--guide" id="guide-sheet" aria-labelledby="guide-title">
+  <div class="sheet__grip" aria-hidden="true"></div>
+  <form method="dialog" class="sheet__closeform">
+    <button class="iconbtn sheet__close" aria-label="닫기" value="cancel">
+      <svg class="ico ico--sm" aria-hidden="true"><use href="#i-close" /></svg>
+    </button>
+  </form>
+
+  <span class="guide__icon accent" aria-hidden="true">
+    <svg class="ico" aria-hidden="true"><use href="#i-sparkle" /></svg>
+  </span>
+  <p class="indexlabel">One More Step</p>
+  <h2 class="sheet__title" id="guide-title">AI 연결이 아직 안 되어 있어요</h2>
+  <p class="sheet__desc" id="guide-desc">
+    코디를 골라 주려면 Google AI Studio에서 받는 무료 키가 하나 필요해요.
+    더보기 화면에서 1분이면 끝나요.
+  </p>
+  <div class="sheet__actions sheet__actions--stack">
+    <button class="btn btn--primary btn--block" id="btn-guide-go" type="button">
+      <span class="btn__text">연결하러 가기</span>
+    </button>
+    <button class="btn btn--quiet btn--block" id="btn-guide-later" type="button">나중에 할게요</button>
+  </div>
+</dialog>
+
+
+<!-- 첫 부팅 -->
 <div class="boot" id="boot">
-  <span class="boot__spinner" aria-hidden="true"></span>
-  <span class="boot__text">불러오는 중…</span>
+  <p class="wordmark">ORBIT</p>
+  <p class="indexlabel boot__text">Loading</p>
 </div>
 
-<!-- 토스트 -->
 <div class="toasts" id="toasts" aria-live="polite" aria-atomic="false"></div>
 
 <script src="api.js"></script>
