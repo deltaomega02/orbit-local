@@ -18,6 +18,7 @@ import com.orbit.service.UnknownClothesException
 import com.orbit.service.UserNotFoundException
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
+import org.springframework.web.bind.MethodArgumentNotValidException
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
 import org.springframework.web.multipart.MaxUploadSizeExceededException
@@ -69,6 +70,25 @@ class ApiExceptionHandler {
     fun handleInvalidCredentials(e: InvalidCredentialsException): ResponseEntity<ErrorResponse> =
         ResponseEntity.status(HttpStatus.UNAUTHORIZED)
             .body(ErrorResponse("invalid_credentials", "이메일 또는 비밀번호가 올바르지 않습니다"))
+
+    @ExceptionHandler(InvalidGeminiKeyException::class)
+    fun handleInvalidGeminiKey(e: InvalidGeminiKeyException): ResponseEntity<ErrorResponse> =
+        ResponseEntity.badRequest()
+            .body(ErrorResponse("invalid_key", "키가 거절되었습니다. 값을 다시 확인해 주세요."))
+
+    /**
+     * 입력 검증 실패. 어느 필드가 왜 걸렸는지까지 돌려준다.
+     * 프레임워크 기본 응답을 그대로 내보내면 timestamp·path 같은 내부 형식이
+     * 그대로 API 스키마가 되고, 클라이언트는 우리 오류와 다른 모양을 하나 더
+     * 다뤄야 한다.
+     */
+    @ExceptionHandler(MethodArgumentNotValidException::class)
+    fun handleValidation(e: MethodArgumentNotValidException): ResponseEntity<ErrorResponse> {
+        val detail = e.bindingResult.fieldErrors
+            .joinToString(" ") { it.defaultMessage ?: "${it.field} 값이 올바르지 않습니다." }
+            .ifBlank { "입력값을 확인해 주세요." }
+        return ResponseEntity.badRequest().body(ErrorResponse("invalid_request", detail))
+    }
 
     @ExceptionHandler(InvalidTokenException::class)
     fun handleInvalidToken(e: InvalidTokenException): ResponseEntity<ErrorResponse> =

@@ -1,0 +1,4 @@
+# EnvironmentPostProcessor 는 아직 spring.factories 로만 등록할 수 있다
+# (.imports 파일은 자동 설정 전용이다).
+org.springframework.boot.env.EnvironmentPostProcessor=\
+  com.orbit.runtime.OrbitEnvironmentPostProcessor

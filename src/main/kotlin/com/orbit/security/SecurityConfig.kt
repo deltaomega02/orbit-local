@@ -3,6 +3,7 @@ package com.orbit.security
 import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
+import jakarta.servlet.DispatcherType
 import org.springframework.http.HttpMethod
 import org.springframework.security.config.annotation.web.builders.HttpSecurity
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity
@@ -34,7 +35,13 @@ class SecurityConfig(
         .formLogin { it.disable() }
         .httpBasic { it.disable() }
         .authorizeHttpRequests {
-            it.requestMatchers(HttpMethod.POST, "/api/auth/signup", "/api/auth/login", "/api/auth/refresh")
+            // 에러 디스패치를 인증에서 빼둔다. 이걸 막아두면 400·500 처럼 이미 발생한
+            // 오류가 /error 로 넘어가면서 전부 401 로 바뀌어 나간다. 필터는 기본적으로
+            // ERROR 디스패치에서 돌지 않으므로 인증 정보가 없는 상태로 도착하기 때문이다.
+            // 사용자는 "키가 틀렸다" 대신 "로그인이 필요하다"를 보게 되고, 진짜 원인은
+            // 사라진다.
+            it.dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
+                .requestMatchers(HttpMethod.POST, "/api/auth/signup", "/api/auth/login", "/api/auth/refresh")
                 .permitAll()
                 // 화면 껍데기(HTML/CSS/JS)는 인증 없이 내려준다. 로그인 화면을 보려면
                 // 먼저 화면이 떠야 하는데, 여기까지 막으면 로그인 자체가 불가능해진다.

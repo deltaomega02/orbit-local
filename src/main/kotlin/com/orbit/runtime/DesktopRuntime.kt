@@ -1,0 +1,140 @@
+package com.orbit.runtime
+
+import java.io.IOException
+import java.net.InetAddress
+import java.net.ServerSocket
+import java.nio.channels.FileChannel
+import java.nio.channels.FileLock
+import java.nio.channels.OverlappingFileLockException
+import java.nio.charset.StandardCharsets
+import java.nio.file.Files
+import java.nio.file.StandardOpenOption
+
+/**
+ * "지금 데스크톱 앱으로 떠 있는가"의 단일 판단 지점.
+ *
+ * 값은 시스템 프로퍼티 하나(`orbit.desktop`)로만 정한다. jpackage 런처가
+ * `-Dorbit.desktop=true` 를 넣고, [com.orbit.main] 도 직접 실행이면 켠다.
+ * **테스트는 main 을 거치지 않으므로 항상 꺼진 상태다** — 덕분에 트레이 아이콘,
+ * 브라우저 자동 실행, 사용자 폴더 로그 같은 부작용이 테스트에 새어 들어올 수 없다.
+ */
+object DesktopRuntime {
+    const val PROPERTY = "orbit.desktop"
+
+    val enabled: Boolean get() = System.getProperty(PROPERTY) == "true"
+
+    /** 명시적으로 꺼둔 경우(`-Dorbit.desktop=false`)는 존중한다. */
+    fun enableUnlessOverridden() {
+        if (System.getProperty(PROPERTY) == null) System.setProperty(PROPERTY, "true")
+    }
+}
+
+/**
+ * 빈 포트를 고른다.
+ *
+ * 8080 은 흔해서 이미 누가 쓰고 있을 확률이 낮지 않고, 그때 앱이 "포트가 사용
+ * 중입니다"라며 뜨지 않으면 터미널을 쓰지 않는 사용자에게는 손쓸 방법이 없다.
+ * 그래서 선호 포트를 먼저 시도하고, 막혀 있으면 옆으로 옮긴다.
+ *
+ * 확인한 뒤 소켓을 닫고 톰캣이 다시 여는 사이에 이론적인 틈이 있지만, 개인용
+ * 로컬 앱에서 그 찰나에 다른 프로세스가 같은 포트를 채갈 확률은 무시할 수 있다.
+ */
+object FreePort {
+    fun pick(preferred: Int = 8080, span: Int = 40): Int {
+        for (port in preferred until preferred + span) {
+            if (isFree(port)) return port
+        }
+        // 전부 막혔으면 OS 에게 아무 포트나 달라고 한다. 0 을 주면 톰캣이 알아서 잡는다.
+        return 0
+    }
+
+    private fun isFree(port: Int): Boolean = try {
+        ServerSocket(port, 1, InetAddress.getLoopbackAddress()).use { true }
+    } catch (e: IOException) {
+        false
+    }
+}
+
+/**
+ * 한 번에 하나만 뜨게 한다.
+ *
+ * H2 파일 DB 는 한 프로세스만 열 수 있어서, 두 번째 인스턴스는 어차피 DB 를 잡지
+ * 못하고 죽는다. 사용자에게는 "아이콘을 두 번 눌렀더니 아무 일도 안 일어났다"로
+ * 보인다. 그래서 두 번째 실행은 **실패시키는 대신 이미 떠 있는 창을 열어준다.**
+ */
+object SingleInstance {
+    private var channel: FileChannel? = null
+    private var lock: FileLock? = null
+
+    /** 잠금을 잡으면 true. 이미 다른 인스턴스가 잡고 있으면 false. */
+    fun acquire(): Boolean {
+        return try {
+            Files.createDirectories(OrbitPaths.dataDir)
+            val ch = FileChannel.open(
+                OrbitPaths.lockFile,
+                StandardOpenOption.CREATE,
+                StandardOpenOption.READ,
+                StandardOpenOption.WRITE,
+            )
+            val acquired = try {
+                ch.tryLock()
+            } catch (e: OverlappingFileLockException) {
+                null
+            }
+            if (acquired == null) {
+                ch.close()
+                false
+            } else {
+                // 프로세스가 살아 있는 동안 계속 쥐고 있어야 한다. 닫지 않는다.
+                channel = ch
+                lock = acquired
+                true
+            }
+        } catch (e: IOException) {
+            // 잠금 파일을 못 만드는 환경이라면 중복 실행을 막는 것보다 뜨는 게 낫다.
+            true
+        }
+    }
+
+    fun publishPort(port: Int) {
+        runCatching {
+            Files.createDirectories(OrbitPaths.dataDir)
+            Files.write(OrbitPaths.portFile, port.toString().toByteArray(StandardCharsets.UTF_8))
+        }
+    }
+
+    fun publishedPort(): Int? = runCatching {
+        Files.readString(OrbitPaths.portFile, StandardCharsets.UTF_8).trim().toIntOrNull()
+    }.getOrNull()
+
+    fun releasePort() {
+        runCatching { Files.deleteIfExists(OrbitPaths.portFile) }
+    }
+}
+
+/** 기본 브라우저로 URL 을 연다. AWT 가 안 되는 환경도 있어서 OS 명령을 백업으로 둔다. */
+object BrowserOpener {
+    fun open(url: String): Boolean {
+        if (openWithAwt(url)) return true
+        return openWithShell(url)
+    }
+
+    private fun openWithAwt(url: String): Boolean = runCatching {
+        if (!java.awt.Desktop.isDesktopSupported()) return false
+        val desktop = java.awt.Desktop.getDesktop()
+        if (!desktop.isSupported(java.awt.Desktop.Action.BROWSE)) return false
+        desktop.browse(java.net.URI(url))
+        true
+    }.getOrDefault(false)
+
+    private fun openWithShell(url: String): Boolean = runCatching {
+        val command = when (OrbitPaths.os) {
+            // rundll32 은 콘솔 창을 띄우지 않는다. `cmd /c start` 는 순간적으로 검은 창이 번쩍인다.
+            OrbitPaths.Os.WINDOWS -> listOf("rundll32", "url.dll,FileProtocolHandler", url)
+            OrbitPaths.Os.MACOS -> listOf("open", url)
+            OrbitPaths.Os.OTHER -> listOf("xdg-open", url)
+        }
+        ProcessBuilder(command).start()
+        true
+    }.getOrDefault(false)
+}
