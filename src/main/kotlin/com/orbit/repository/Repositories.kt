@@ -2,6 +2,7 @@ package com.orbit.repository
 
 import com.orbit.domain.Clothes
 import com.orbit.domain.Coordination
+import com.orbit.domain.MainCategory
 import com.orbit.domain.CoordinationItem
 import com.orbit.domain.User
 import org.springframework.data.domain.Page
@@ -34,6 +35,17 @@ interface ClothesRepository : JpaRepository<Clothes, Long> {
 
     /** 목록은 페이지 단위로만 노출한다. 최신 등록 순. */
     fun findAllByOwnerIdOrderByIdDesc(ownerId: Long, pageable: Pageable): Page<Clothes>
+
+    /**
+     * 카테고리 필터. 필터링을 클라이언트에 맡기면 "이미 받아온 페이지" 안에서만
+     * 걸러지므로, 옷이 한 페이지를 넘는 순간 결과가 사실과 달라진다.
+     * 걸러내는 일은 데이터를 가진 쪽에서 해야 한다.
+     */
+    fun findAllByOwnerIdAndMainCategoryOrderByIdDesc(
+        ownerId: Long,
+        mainCategory: MainCategory,
+        pageable: Pageable,
+    ): Page<Clothes>
 
     fun findByIdAndOwnerId(id: Long, ownerId: Long): Clothes?
 

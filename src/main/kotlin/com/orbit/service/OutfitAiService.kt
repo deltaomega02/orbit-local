@@ -75,7 +75,7 @@ class OutfitAiService(
         val suggestion = recommender.recommend(
             RecommendRequest(
                 candidates = wardrobe.map {
-                    RecommendCandidate(requireNotNull(it.id), it.name, it.mainCategory, it.color)
+                    RecommendCandidate(requireNotNull(it.id), it.name, it.mainCategory, it.color, it.detail)
                 },
                 avoidCombinations = coordinationService.todayCoordinations(ownerId).map { it.clothesIdSet() },
             ),

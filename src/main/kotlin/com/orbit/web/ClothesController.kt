@@ -23,6 +23,7 @@ data class CreateClothesRequest(
     @field:NotBlank @field:Size(max = 60) val name: String,
     val mainCategory: MainCategory,
     @field:Size(max = 30) val color: String? = null,
+    @field:Size(max = 200) val detail: String? = null,
 )
 
 /** PATCH. 넘어오지 않은(=null) 필드는 건드리지 않는다. */
@@ -37,6 +38,8 @@ data class ClothesResponse(
     val name: String,
     val mainCategory: MainCategory,
     val color: String?,
+    /** 소재·핏·상황. 추천 품질에 직접 쓰이므로 응답에도 노출해 사용자가 고칠 수 있게 한다. */
+    val detail: String?,
     /** 사진이 없으면 null. 클라이언트는 이 값으로 플레이스홀더 표시 여부를 판단한다. */
     val imageUrl: String?,
     val createdAt: Instant,
@@ -47,6 +50,7 @@ data class ClothesResponse(
             name = c.name,
             mainCategory = c.mainCategory,
             color = c.color,
+            detail = c.detail,
             imageUrl = mediaUrl(c.imagePath),
             createdAt = c.createdAt,
         )
@@ -109,7 +113,7 @@ class ClothesController(
         @AuthenticationPrincipal user: AuthenticatedUser,
         @Valid @RequestBody request: CreateClothesRequest,
     ): ResponseEntity<ClothesResponse> {
-        val created = service.create(user.id, request.name, request.mainCategory, request.color)
+        val created = service.create(user.id, request.name, request.mainCategory, request.color, null, request.detail)
         return ResponseEntity.status(HttpStatus.CREATED).body(ClothesResponse.from(created))
     }
 
@@ -127,6 +131,7 @@ class ClothesController(
         @RequestParam("name") name: String,
         @RequestParam("mainCategory") mainCategory: MainCategory,
         @RequestParam("color", required = false) color: String?,
+        @RequestParam("detail", required = false) detail: String?,
         @RequestPart("image", required = false) image: MultipartFile?,
     ): ResponseEntity<ClothesResponse> {
         // multipart 폼 필드에는 @Valid 가 걸리지 않으므로 JSON 쪽과 같은 제약을 손으로 맞춘다.
@@ -135,7 +140,7 @@ class ClothesController(
 
         val imagePath = image?.takeIf { !it.isEmpty }
             ?.let { mediaStorage.store("clothes", it.bytes, it.contentType).relativePath }
-        val created = service.create(user.id, name, mainCategory, color, imagePath)
+        val created = service.create(user.id, name, mainCategory, color, imagePath, detail)
         return ResponseEntity.status(HttpStatus.CREATED).body(ClothesResponse.from(created))
     }
 
@@ -172,9 +177,10 @@ class ClothesController(
         @AuthenticationPrincipal user: AuthenticatedUser,
         @RequestParam(defaultValue = "0") page: Int,
         @RequestParam(defaultValue = "$DEFAULT_PAGE_SIZE") size: Int,
+        @RequestParam(required = false) mainCategory: MainCategory?,
     ): PageResponse<ClothesResponse> {
         val pageable = PageRequest.of(page.coerceAtLeast(0), size.coerceIn(1, MAX_PAGE_SIZE))
-        return PageResponse.from(service.list(user.id, pageable), ClothesResponse::from)
+        return PageResponse.from(service.list(user.id, pageable, mainCategory), ClothesResponse::from)
     }
 
     @GetMapping("/{id}")

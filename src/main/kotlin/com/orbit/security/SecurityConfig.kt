@@ -36,6 +36,12 @@ class SecurityConfig(
         .authorizeHttpRequests {
             it.requestMatchers(HttpMethod.POST, "/api/auth/signup", "/api/auth/login", "/api/auth/refresh")
                 .permitAll()
+                // 화면 껍데기(HTML/CSS/JS)는 인증 없이 내려준다. 로그인 화면을 보려면
+                // 먼저 화면이 떠야 하는데, 여기까지 막으면 로그인 자체가 불가능해진다.
+                // 사용자 데이터는 전부 /api/** 와 /media/** 뒤에 있으므로 이걸 열어도
+                // 노출되는 것은 없다. 경로를 하나씩 나열해 새 경로가 실수로 열리지 않게 한다.
+                .requestMatchers(HttpMethod.GET, "/", "/index.html", "/app.js", "/api.js", "/style.css", "/favicon.ico")
+                .permitAll()
                 .anyRequest().authenticated()
         }
         .exceptionHandling {

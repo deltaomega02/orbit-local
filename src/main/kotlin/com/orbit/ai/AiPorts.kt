@@ -40,6 +40,7 @@ data class RecommendCandidate(
     val name: String,
     val mainCategory: MainCategory,
     val color: String?,
+    val detail: String? = null,
 )
 
 data class RecommendRequest(

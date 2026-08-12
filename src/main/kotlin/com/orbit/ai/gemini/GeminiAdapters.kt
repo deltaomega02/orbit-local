@@ -64,9 +64,33 @@ class GeminiClothingAnalyzer(
                 "contents" to userContent(
                     textPart(
                         """
-                        이 사진 속 옷 한 벌을 한국어로 설명해라.
-                        name 은 20자 이내의 짧은 이름, mainCategory 는 TOP/BOTTOM/OUTER 중 하나,
-                        color 는 대표 색 한 단어, detail 은 소재·핏·어울리는 상황을 한 문장으로.
+                        너는 의류 카탈로그를 만드는 편집자다. 사진 속 옷 한 벌을 한국어로 기록해라.
+
+                        [무엇을 볼 것인가]
+                        - 사진에 옷이 여러 벌 보이면 **화면에서 가장 크고 중심에 있는 한 벌**만 대상으로 한다.
+                        - 사람이 입고 있어도 사람이 아니라 옷을 기록한다. 얼굴·배경·소품은 무시한다.
+
+                        [name] 20자 이내. "색 + 특징 + 종류" 순서로 쓴다.
+                          좋은 예: "네이비 옥스퍼드 셔츠", "연청 와이드 데님"
+                          나쁜 예: "셔츠", "예쁜 옷", "상의 1"
+
+                        [mainCategory] 다음 기준으로만 정한다. 애매하면 규칙을 우선한다.
+                          TOP    — 티셔츠·셔츠·블라우스·니트·후드티·맨투맨 (단독으로 입는 상의)
+                          BOTTOM — 바지·청바지·슬랙스·치마·반바지
+                          OUTER  — 자켓·코트·패딩·가디건·집업후디 (상의 위에 겹쳐 입는 것)
+                          * 앞이 완전히 열리는(지퍼·단추) 겉옷은 OUTER 다.
+                          * 원피스처럼 상하의가 붙은 옷은 TOP 으로 한다.
+
+                        [color] 한국어 대표색 **한 단어**. 무늬가 있으면 바탕의 주된 색을 쓴다.
+                          허용 예: 화이트 블랙 그레이 네이비 베이지 브라운 카키 아이보리 연청 진청 레드 핑크 그린 블루
+
+                        [detail] 한 문장, 60자 이내. **추천에 실제로 쓰일 정보만** 담는다 —
+                          소재감(면·니트·데님·리넨·기모), 핏(오버·슬림·와이드), 두께,
+                          어울리는 계절과 상황. 감상이나 칭찬은 쓰지 마라.
+                          좋은 예: "도톰한 기모 소재로 겨울 캐주얼에 적합한 오버핏"
+                          나쁜 예: "정말 예쁘고 스타일리시한 옷입니다"
+
+                        확신이 없어도 비워두지 말고 사진에서 보이는 근거로 가장 그럴듯한 값을 골라라.
                         """.trimIndent(),
                     ),
                     imagePart(image, mime),
@@ -175,19 +199,42 @@ class GeminiOutfitRecommender(
     }
 
     private fun buildPrompt(req: RecommendRequest): String = buildString {
-        appendLine("너는 옷장 코디네이터다. 아래 후보에서 상의 1벌과 하의 1벌을 반드시 고르고, 어울리면 아우터 1벌을 더해라.")
-        appendLine("후보:")
-        req.candidates.forEach {
-            appendLine("- id=${it.id} / 이름=${it.name} / 분류=${it.mainCategory} / 색=${it.color ?: "미상"}")
-        }
-        if (req.avoidCombinations.isNotEmpty()) {
-            appendLine()
-            appendLine("아래 조합은 오늘 이미 추천했다. 같은 조합은 절대 다시 고르지 마라.")
-            req.avoidCombinations.forEach { appendLine("- ${it.sorted()}") }
+        appendLine("너는 개인 옷장을 다루는 스타일리스트다. 아래 옷장에서 오늘 입을 한 벌을 고른다.")
+        appendLine()
+        appendLine("[내 옷장]")
+        req.candidates.groupBy { it.mainCategory }.forEach { (category, items) ->
+            appendLine("$category:")
+            items.forEach {
+                val parts = listOfNotNull(
+                    "id=${it.id}",
+                    it.name,
+                    it.color?.let { c -> "색:$c" },
+                    it.detail?.takeIf { d -> d.isNotBlank() },
+                )
+                appendLine("  - ${parts.joinToString(" / ")}")
+            }
         }
         appendLine()
-        appendLine("clothesIds 에는 위 후보에 실제로 있는 id 만 넣어라. 새 id 를 만들어내지 마라.")
-        appendLine("reason 은 왜 이 조합인지 한국어 두 문장 이내로 써라.")
+        appendLine("[고르는 규칙]")
+        appendLine("1. 상의(TOP) 1벌과 하의(BOTTOM) 1벌은 반드시 고른다. 아우터(OUTER)는 어울릴 때만 1벌 더한다.")
+        appendLine("2. 색은 전체 3색 이내로 맞춘다. 톤을 통일하거나, 무채색 바탕에 한 곳만 색을 준다.")
+        appendLine("3. 소재와 두께의 계절감을 맞춘다. 두꺼운 니트에 얇은 리넨 하의처럼 계절이 어긋나는 조합은 피한다.")
+        appendLine("4. 핏의 균형을 본다. 상의가 오버핏이면 하의는 정리된 실루엣으로 두는 식이다.")
+        appendLine("5. 옷장에 있는 것만 쓴다. **id 를 새로 만들어내지 마라.** 없는 id 를 넣으면 이 응답은 폐기된다.")
+        if (req.avoidCombinations.isNotEmpty()) {
+            appendLine()
+            appendLine("[오늘 이미 나온 조합 — 같은 구성을 다시 고르지 마라]")
+            req.avoidCombinations.forEach { appendLine("  - ${it.sorted().joinToString(", ")}") }
+            appendLine("위와 **한 벌이라도 다른** 조합을 만들어라. 정말 다른 조합이 없다면 가장 덜 비슷한 것을 고른다.")
+        }
+        appendLine()
+        appendLine("[출력]")
+        appendLine("title  — 오늘의 분위기가 드러나는 12자 이내 이름. 예: \"단정한 출근룩\", \"편한 주말 산책\"")
+        appendLine("reason — 왜 이 조합인지 한국어 두 문장 이내.")
+        appendLine("         **색·소재·핏 중 실제로 근거가 된 것을 짚어서** 쓴다.")
+        appendLine("         좋은 예: \"네이비 셔츠의 차분한 톤에 연청 데님으로 가볍게 풀었어요. 도톰한 소재라 아침저녁 쌀쌀할 때 좋아요.\"")
+        appendLine("         나쁜 예: \"잘 어울리는 조합입니다.\"")
+        appendLine("         옷 이름을 그대로 나열하지 말고, 왜 함께 두었는지를 말해라.")
     }
 
     /** 응답을 못 읽었을 때의 결정적 대체안. 상의·하의를 하나씩 집는다. */
@@ -220,9 +267,31 @@ class GeminiTryOnImageGenerator(
             add(
                 textPart(
                     """
-                    첫 번째 사진은 사람의 전신 사진이다. 나머지 사진들은 옷이다.
-                    이 사람이 그 옷들을 실제로 입은 모습을 한 장의 사진으로 만들어라.
-                    얼굴·체형·배경은 그대로 유지하고 옷만 바꿔라.
+                    첫 번째 이미지는 한 사람의 전신 사진이다. 두 번째부터는 옷 사진이며,
+                    **레이어 순서대로**(안쪽 → 바깥쪽) 주어진다.
+
+                    이 사람이 그 옷들을 실제로 입고 같은 자리에서 찍은 것처럼 보이는
+                    사진 한 장을 만들어라.
+
+                    [반드시 그대로 둘 것]
+                    - 얼굴, 머리 모양, 피부톤, 체형과 비율, 자세와 시선
+                    - 배경, 촬영 각도, 화각, 조명의 방향과 색온도
+                    - 사진의 전반적인 화질과 입자감
+
+                    [바꿀 것]
+                    - 입고 있는 옷만. 주어진 옷들로 완전히 교체한다.
+                    - 원래 입고 있던 옷은 남기지 않는다. 겹쳐 그리지 마라.
+
+                    [옷을 그릴 때]
+                    - 각 옷의 색·무늬·재질·단추와 지퍼 같은 디테일을 사진 그대로 재현한다.
+                    - 아우터는 상의 위에 오도록 겹쳐 입힌다.
+                    - 몸에 닿는 곳의 주름, 접힘, 그림자를 자연스럽게 만든다.
+                    - 옷이 배경 조명과 같은 방향으로 그림자를 받게 한다.
+
+                    [금지]
+                    - 글자, 워터마크, 로고 삽입
+                    - 인물을 다른 사람으로 바꾸거나 얼굴을 보정하는 것
+                    - 만화·일러스트 풍으로 바꾸는 것. **사진처럼 보여야 한다.**
                     """.trimIndent(),
                 ),
             )

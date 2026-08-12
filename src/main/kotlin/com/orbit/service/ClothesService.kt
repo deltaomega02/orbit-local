@@ -31,6 +31,7 @@ class ClothesService(
         mainCategory: MainCategory,
         color: String?,
         imagePath: String? = null,
+        detail: String? = null,
     ): Clothes =
         clothesRepository.save(
             Clothes(
@@ -39,6 +40,7 @@ class ClothesService(
                 mainCategory = mainCategory,
                 color = color?.trim()?.ifEmpty { null },
                 imagePath = imagePath,
+                detail = detail?.trim()?.ifEmpty { null }?.take(200),
             ),
         )
 
@@ -52,8 +54,12 @@ class ClothesService(
      * 여기서는 21건을 넣고 1페이지가 20건인지 테스트로 확인한다.
      */
     @Transactional(readOnly = true)
-    fun list(ownerId: Long, pageable: Pageable): Page<Clothes> =
-        clothesRepository.findAllByOwnerIdOrderByIdDesc(ownerId, pageable)
+    fun list(ownerId: Long, pageable: Pageable, mainCategory: MainCategory? = null): Page<Clothes> =
+        if (mainCategory == null) {
+            clothesRepository.findAllByOwnerIdOrderByIdDesc(ownerId, pageable)
+        } else {
+            clothesRepository.findAllByOwnerIdAndMainCategoryOrderByIdDesc(ownerId, mainCategory, pageable)
+        }
 
     @Transactional(readOnly = true)
     fun get(ownerId: Long, id: Long): Clothes = findOwned(ownerId, id)
