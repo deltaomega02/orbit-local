@@ -5,6 +5,7 @@ import com.orbit.domain.MainCategory
 import com.orbit.media.MediaStorage
 import com.orbit.security.AuthenticatedUser
 import com.orbit.service.ClothesService
+import com.orbit.service.CoordinationService
 import com.orbit.service.OutfitAiService
 import jakarta.validation.Valid
 import jakarta.validation.constraints.NotBlank
@@ -56,6 +57,32 @@ data class ClothesResponse(
         )
     }
 }
+
+/** 통계의 "많이 입은 옷" 한 줄. */
+data class ClothesUsageResponse(
+    val clothesId: Long,
+    val name: String,
+    val imageUrl: String?,
+    val usedCount: Long,
+)
+
+/**
+ * 옷장 통계.
+ *
+ * `byCategory` 의 키를 [MainCategory] 이름 문자열로 두고 **값이 0인 카테고리는
+ * 넣지 않는다.** 옷이 하나도 없는 카테고리를 0으로 채워 보내면 화면이 빈 막대를
+ * 그리게 되는데, 그건 서버가 아니라 화면이 정할 일이다.
+ *
+ * `neverUsed` 는 개수만 준다. 어떤 옷인지까지 주려면 목록이 되고, 목록이면
+ * 페이지네이션이 필요해진다. "안 입은 옷이 3벌 있다"는 신호가 통계의 역할이고,
+ * 그 다음은 옷장 목록에서 볼 일이다.
+ */
+data class WardrobeStatsResponse(
+    val total: Long,
+    val byCategory: Map<String, Long>,
+    val mostUsed: List<ClothesUsageResponse>,
+    val neverUsed: Long,
+)
 
 /** 사진 분석 결과. 저장하지 않고 등록 폼을 미리 채우는 데만 쓴다. */
 data class ClothesAnalysisResponse(
@@ -109,6 +136,7 @@ internal const val MAX_PAGE_SIZE = 100
 @RequestMapping("/api/clothes")
 class ClothesController(
     private val service: ClothesService,
+    private val coordinationService: CoordinationService,
     private val outfitAiService: OutfitAiService,
     private val mediaStorage: MediaStorage,
 ) {
@@ -188,11 +216,57 @@ class ClothesController(
         return PageResponse.from(service.list(user.id, pageable, mainCategory), ClothesResponse::from)
     }
 
+    /**
+     * 옷장 통계.
+     *
+     * `/{id}` 보다 먼저 선언했지만 순서와는 무관하다 — Spring 은 리터럴 경로를
+     * 경로 변수보다 우선해서 매칭한다. 다만 읽는 사람에게는 붙어 있는 편이 낫다.
+     */
+    @GetMapping("/stats")
+    fun stats(@AuthenticationPrincipal user: AuthenticatedUser): WardrobeStatsResponse {
+        val stats = service.stats(user.id)
+        return WardrobeStatsResponse(
+            total = stats.total,
+            byCategory = stats.byCategory.mapKeys { it.key.name },
+            mostUsed = stats.mostUsed.map {
+                ClothesUsageResponse(
+                    clothesId = it.clothesId,
+                    name = it.name,
+                    imageUrl = mediaUrl(it.imagePath),
+                    usedCount = it.usedCount,
+                )
+            },
+            neverUsed = stats.neverUsed,
+        )
+    }
+
     @GetMapping("/{id}")
     fun get(
         @AuthenticationPrincipal user: AuthenticatedUser,
         @PathVariable id: Long,
     ): ClothesResponse = ClothesResponse.from(service.get(user.id, id))
+
+    /**
+     * 이 옷이 실제로 쓰인 코디들. 사용자가 옷을 눌렀을 때 "이 옷으로 뭘 입었었지"를 본다.
+     *
+     * 옷의 존재·소유 확인을 먼저 한다. 그러지 않으면 남의 옷 id 로 물었을 때 빈 목록이
+     * 나가는데, 빈 목록은 "그 옷은 코디에 안 쓰였다"는 뜻이라 **그 id 가 실재한다는
+     * 사실을 흘린다.** 없는 것과 남의 것은 똑같이 404 여야 한다.
+     */
+    @GetMapping("/{id}/coordinations")
+    fun coordinations(
+        @AuthenticationPrincipal user: AuthenticatedUser,
+        @PathVariable id: Long,
+        @RequestParam(defaultValue = "0") page: Int,
+        @RequestParam(defaultValue = "$DEFAULT_PAGE_SIZE") size: Int,
+    ): PageResponse<CoordinationResponse> {
+        service.get(user.id, id) // 없거나 남의 것이면 여기서 404
+        val pageable = PageRequest.of(page.coerceAtLeast(0), size.coerceIn(1, MAX_PAGE_SIZE))
+        return PageResponse.from(
+            coordinationService.byClothes(user.id, id, pageable),
+            CoordinationResponse::from,
+        )
+    }
 
     @PatchMapping("/{id}")
     fun update(

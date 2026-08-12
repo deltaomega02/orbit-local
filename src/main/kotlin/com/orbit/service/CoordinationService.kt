@@ -49,7 +49,9 @@ class CoordinationService(
         require(clothesIds.isNotEmpty()) { "clothesIds는 비어 있을 수 없습니다" }
 
         val requested = clothesIds.toSet()
-        val found = clothesRepository.findAllByIdInAndOwnerId(requested, ownerId)
+        // 옷장에서 치운 옷(소프트 삭제)으로는 새 코디를 만들 수 없다. 과거 기록에는
+        // 남지만 "지금 입을 수 있는 옷"은 아니므로, 없는 옷과 똑같이 취급한다.
+        val found = clothesRepository.findAllByIdInAndOwnerIdAndDeletedAtIsNull(requested, ownerId)
         val foundIds = found.mapNotNull { it.id }.toSet()
         if (foundIds != requested) {
             throw UnknownClothesException(requested - foundIds)

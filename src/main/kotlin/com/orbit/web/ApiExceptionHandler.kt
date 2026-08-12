@@ -6,7 +6,6 @@ import com.orbit.ai.AiUnavailableException
 import com.orbit.media.ImageTooLargeException
 import com.orbit.media.UnsupportedImageTypeException
 import com.orbit.security.InvalidTokenException
-import com.orbit.service.ClothesInUseException
 import com.orbit.service.ClothesNotFoundException
 import com.orbit.service.CoordinationNotFoundException
 import com.orbit.service.DuplicateCoordinationException
@@ -52,10 +51,14 @@ class ApiExceptionHandler {
         ResponseEntity.status(HttpStatus.NOT_FOUND)
             .body(ErrorResponse("not_found", "의류를 찾을 수 없습니다"))
 
-    @ExceptionHandler(ClothesInUseException::class)
-    fun handleClothesInUse(e: ClothesInUseException): ResponseEntity<ErrorResponse> =
-        ResponseEntity.status(HttpStatus.CONFLICT)
-            .body(ErrorResponse("clothes_in_use", "코디에 사용 중인 의류는 삭제할 수 없습니다"))
+    /*
+     * `clothes_in_use` (409) 는 없앴다.
+     *
+     * 코디에 쓰인 옷의 삭제를 거절하는 대신 소프트 삭제로 처리하도록 규칙을
+     * 바꿨기 때문이다([com.orbit.domain.Clothes.deletedAt]). 지금은 쓰인 적이 있든
+     * 없든 삭제가 성공하고 204 가 나간다. 클라이언트에서 이 오류를 다루던 분기는
+     * 도달할 수 없는 코드가 됐다.
+     */
 
     @ExceptionHandler(EmailAlreadyUsedException::class)
     fun handleEmailTaken(e: EmailAlreadyUsedException): ResponseEntity<ErrorResponse> =

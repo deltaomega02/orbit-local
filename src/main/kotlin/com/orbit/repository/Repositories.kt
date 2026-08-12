@@ -30,32 +30,88 @@ interface UserRepository : JpaRepository<User, Long> {
  * 리포지토리 시그니처가 소유자를 요구하게 만들어 빼먹으면 컴파일이 안 되게 한다.
  */
 interface ClothesRepository : JpaRepository<Clothes, Long> {
-    fun findAllByOwnerId(ownerId: Long): List<Clothes>
-    fun findAllByIdInAndOwnerId(ids: Collection<Long>, ownerId: Long): List<Clothes>
+
+    /*
+     * 소유자 조건과 함께 `DeletedAtIsNull` 도 메서드 이름에 박아 둔다.
+     * 소프트 삭제는 조건 하나를 빠뜨리는 순간 "지운 옷이 되살아나는" 버그가 되는데,
+     * 그 조건이 서비스 코드에 흩어져 있으면 언젠가 한 곳이 빠진다. 이름에 넣어 두면
+     * 조건 없는 조회를 부르려다 메서드가 없어서 멈추게 된다.
+     * (조건을 일부러 빼는 자리는 딱 하나, `/media` 소유권 검사다 — 아래 참고)
+     */
+
+    fun findAllByOwnerIdAndDeletedAtIsNull(ownerId: Long): List<Clothes>
+
+    fun findAllByIdInAndOwnerIdAndDeletedAtIsNull(ids: Collection<Long>, ownerId: Long): List<Clothes>
 
     /** 목록은 페이지 단위로만 노출한다. 최신 등록 순. */
-    fun findAllByOwnerIdOrderByIdDesc(ownerId: Long, pageable: Pageable): Page<Clothes>
+    fun findAllByOwnerIdAndDeletedAtIsNullOrderByIdDesc(ownerId: Long, pageable: Pageable): Page<Clothes>
 
     /**
      * 카테고리 필터. 필터링을 클라이언트에 맡기면 "이미 받아온 페이지" 안에서만
      * 걸러지므로, 옷이 한 페이지를 넘는 순간 결과가 사실과 달라진다.
      * 걸러내는 일은 데이터를 가진 쪽에서 해야 한다.
      */
-    fun findAllByOwnerIdAndMainCategoryOrderByIdDesc(
+    fun findAllByOwnerIdAndMainCategoryAndDeletedAtIsNullOrderByIdDesc(
         ownerId: Long,
         mainCategory: MainCategory,
         pageable: Pageable,
     ): Page<Clothes>
 
-    fun findByIdAndOwnerId(id: Long, ownerId: Long): Clothes?
+    fun findByIdAndOwnerIdAndDeletedAtIsNull(id: Long, ownerId: Long): Clothes?
 
-    /** `/media/…` 소유권 검사용. */
+    /**
+     * `/media/…` 소유권 검사용. **여기만 `deletedAt` 을 보지 않는다.**
+     * 옷장에서 치운 옷도 과거 코디 화면에는 그대로 나오고, 그 사진이 404 가 되면
+     * 기록이 반쪽이 된다. "옷장에 있는가"와 "이 파일을 볼 권한이 있는가"는 다른 질문이다.
+     */
     fun existsByOwnerIdAndImagePath(ownerId: Long, imagePath: String): Boolean
+
+    /** 통계용. 카테고리별 개수를 한 쿼리로 센다 — 카테고리마다 따로 세면 3번 돈다. */
+    @Query(
+        """
+        select c.mainCategory, count(c) from Clothes c
+        where c.ownerId = :ownerId and c.deletedAt is null
+        group by c.mainCategory
+        """,
+    )
+    fun countByCategory(@Param("ownerId") ownerId: Long): List<Array<Any>>
 }
 
 interface CoordinationItemRepository : JpaRepository<CoordinationItem, Long> {
-    /** 코디에 물려 있는 의류인지. 삭제를 409 로 거절하기 위한 조회다. */
+    /** 코디에 물려 있는 의류인지. 물리 삭제와 소프트 삭제를 가르는 기준이다. */
     fun existsByClothesId(clothesId: Long): Boolean
+
+    /**
+     * 많이 입은 옷. 옷 하나당 쓰인 코디 수를 세서 내림차순으로 준다.
+     *
+     * 개수 제한을 [Pageable] 로 받는 이유: 애플리케이션에서 전부 읽고 자르면 옷이
+     * 늘어날수록 읽는 양이 함께 늘고, "상위 5개"를 보려고 옷장 전체를 옮기는 꼴이 된다.
+     * 동점일 때 순서가 흔들리지 않도록 id 를 2차 정렬 키로 둔다.
+     */
+    @Query(
+        """
+        select cl.id, cl.name, cl.imagePath, count(i)
+        from CoordinationItem i join i.clothes cl
+        where cl.ownerId = :ownerId and cl.deletedAt is null
+        group by cl.id, cl.name, cl.imagePath
+        order by count(i) desc, cl.id asc
+        """,
+    )
+    fun findMostUsed(@Param("ownerId") ownerId: Long, pageable: Pageable): List<Array<Any>>
+
+    /**
+     * 한 번이라도 코디에 쓰인 옷의 수. "한 번도 안 쓴 옷"은 전체에서 이 값을 뺀다.
+     * 반대로(쓰이지 않은 옷을 직접 세기) 하려면 not exists 서브쿼리가 필요한데,
+     * 빼기 한 번이면 되는 것을 굳이 어렵게 물을 이유가 없다.
+     */
+    @Query(
+        """
+        select count(distinct cl.id)
+        from CoordinationItem i join i.clothes cl
+        where cl.ownerId = :ownerId and cl.deletedAt is null
+        """,
+    )
+    fun countUsedClothes(@Param("ownerId") ownerId: Long): Long
 }
 
 interface CoordinationRepository : JpaRepository<Coordination, Long> {

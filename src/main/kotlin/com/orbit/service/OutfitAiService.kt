@@ -67,7 +67,9 @@ class OutfitAiService(
     fun recommend(ownerId: Long): Coordination {
         val recommender = recommenderProvider.require()
 
-        val wardrobe = clothesRepository.findAllByOwnerId(ownerId)
+        // 옷장에서 치운 옷은 후보에 넣지 않는다. 이미 버린 옷을 오늘 입으라고
+        // 추천하는 것만큼 쓸모없는 결과도 없다.
+        val wardrobe = clothesRepository.findAllByOwnerIdAndDeletedAtIsNull(ownerId)
         val hasTop = wardrobe.any { it.mainCategory == MainCategory.TOP }
         val hasBottom = wardrobe.any { it.mainCategory == MainCategory.BOTTOM }
         if (!hasTop || !hasBottom) throw NotEnoughClothesException()

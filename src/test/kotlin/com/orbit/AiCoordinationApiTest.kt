@@ -108,7 +108,7 @@ class AiCoordinationApiTest {
 
         assertEquals(1, analyzer.calls)
         // 저장되지 않았다는 것이 이 엔드포인트의 계약이다
-        assertEquals(0, clothesRepository.findAllByOwnerId(me.userId).size)
+        assertEquals(0, clothesRepository.findAllByOwnerIdAndDeletedAtIsNull(me.userId).size)
         // 선언된 Content-Type 이 아니라 실제로 판별한 형식이 AI 로 넘어간다
         assertEquals("image/png", analyzer.lastMime)
     }

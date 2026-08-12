@@ -222,25 +222,95 @@ class ClothesApiTest {
         assertEquals(true, clothesRepository.findById(othersId).isPresent, "남의 옷이 지워지면 안 된다")
     }
 
+    private fun createCoordination(title: String, ids: List<Long>): Long {
+        val body = mockMvc.perform(
+            post("/api/coordinations")
+                .header(HttpHeaders.AUTHORIZATION, me.bearer)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(mapOf("title" to title, "clothesIds" to ids))),
+        ).andExpect(status().isCreated).andReturn().response.contentAsString
+        return api.json(body)["id"].toString().toLong()
+    }
+
+    /**
+     * 삭제 규칙이 바뀐 자리다.
+     *
+     * 예전에는 코디에 물린 옷을 409(`clothes_in_use`)로 거절했다. 기록이 깨지는 건
+     * 막았지만, "과거 기록을 보는 앱"에서 한 번 입은 옷을 영영 못 지우게 되는 쪽이
+     * 더 이상했다. 지금은 소프트 삭제로 옷장에서만 감춘다 — 응답은 204 이고
+     * 지난 코디는 그대로 남는다. 그 둘을 한 테스트에서 같이 확인한다.
+     */
     @Test
-    fun `코디에 사용 중인 의류는 409 로 삭제를 거절한다`() {
+    fun `코디에 쓰인 의류를 지우면 옷장에서만 사라지고 지난 코디는 남는다`() {
         val topId = createClothes(me, "셔츠", MainCategory.TOP)
         val bottomId = createClothes(me, "슬랙스", MainCategory.BOTTOM)
+        val coordinationId = createCoordination("출근룩", listOf(topId, bottomId))
+
+        mockMvc.perform(delete("/api/clothes/$topId").header(HttpHeaders.AUTHORIZATION, me.bearer))
+            .andExpect(status().isNoContent)
+
+        // 옷장에서는 사라진다
+        mockMvc.perform(get("/api/clothes/$topId").header(HttpHeaders.AUTHORIZATION, me.bearer))
+            .andExpect(status().isNotFound)
+        mockMvc.perform(get("/api/clothes").header(HttpHeaders.AUTHORIZATION, me.bearer))
+            .andExpect(jsonPath("$.content[?(@.name == '셔츠')]").isEmpty)
+            .andExpect(jsonPath("$.totalElements").value(1))
+
+        // 지난 코디는 그대로다. 여기가 깨지면 소프트 삭제를 택한 이유가 없어진다
+        mockMvc.perform(get("/api/coordinations/$coordinationId").header(HttpHeaders.AUTHORIZATION, me.bearer))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.items.length()").value(2))
+            .andExpect(jsonPath("$.items[?(@.name == '셔츠')]").isNotEmpty)
+
+        // 행 자체는 남아 있다 — 그래야 위 코디가 성립한다
+        assertEquals(true, clothesRepository.findById(topId).isPresent)
+    }
+
+    @Test
+    fun `코디에 쓰인 적 없는 의류는 행까지 지운다`() {
+        val id = createClothes(me, "한 번도 안 입은 셔츠")
+
+        mockMvc.perform(delete("/api/clothes/$id").header(HttpHeaders.AUTHORIZATION, me.bearer))
+            .andExpect(status().isNoContent)
+
+        // 참조가 없으니 남길 이유가 없다. 소프트 삭제로 두면 아무도 안 보는 행만 쌓인다
+        assertEquals(false, clothesRepository.findById(id).isPresent)
+    }
+
+    @Test
+    fun `이미 지운 의류를 다시 지우면 404 다`() {
+        val topId = createClothes(me, "셔츠", MainCategory.TOP)
+        val bottomId = createClothes(me, "슬랙스", MainCategory.BOTTOM)
+        createCoordination("출근룩", listOf(topId, bottomId))
+
+        mockMvc.perform(delete("/api/clothes/$topId").header(HttpHeaders.AUTHORIZATION, me.bearer))
+            .andExpect(status().isNoContent)
+        // 소프트 삭제라 행은 남지만, 사용자에게는 없는 옷과 구별되지 않아야 한다
+        mockMvc.perform(delete("/api/clothes/$topId").header(HttpHeaders.AUTHORIZATION, me.bearer))
+            .andExpect(status().isNotFound)
+    }
+
+    @Test
+    fun `지운 의류로는 새 코디를 만들 수 없다`() {
+        val topId = createClothes(me, "셔츠", MainCategory.TOP)
+        val bottomId = createClothes(me, "슬랙스", MainCategory.BOTTOM)
+        createCoordination("출근룩", listOf(topId, bottomId))
+        mockMvc.perform(delete("/api/clothes/$topId").header(HttpHeaders.AUTHORIZATION, me.bearer))
+            .andExpect(status().isNoContent)
+
+        // 과거 기록에는 남지만 "지금 입을 수 있는 옷"은 아니다. 없는 옷과 같이 취급한다
         mockMvc.perform(
             post("/api/coordinations")
                 .header(HttpHeaders.AUTHORIZATION, me.bearer)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(
                     objectMapper.writeValueAsString(
-                        mapOf("title" to "출근룩", "clothesIds" to listOf(topId, bottomId)),
+                        mapOf("title" to "부활한 셔츠", "clothesIds" to listOf(topId, bottomId)),
                     ),
                 ),
-        ).andExpect(status().isCreated)
-
-        // 옷 한 벌을 지웠다고 지난 코디 기록이 사라지는 건 예상 밖의 동작이라, 막고 이유를 알린다
-        mockMvc.perform(delete("/api/clothes/$topId").header(HttpHeaders.AUTHORIZATION, me.bearer))
-            .andExpect(status().isConflict)
-            .andExpect(jsonPath("$.error").value("clothes_in_use"))
+        )
+            .andExpect(status().isBadRequest)
+            .andExpect(jsonPath("$.error").value("unknown_clothes"))
     }
 
     @Test
