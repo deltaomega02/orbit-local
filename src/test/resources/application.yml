@@ -1,0 +1,13 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:orbit_test;DB_CLOSE_DELAY=-1;MODE=MySQL
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    open-in-view: false
+    properties:
+      hibernate:
+        generate_statistics: true   # N+1 검증 테스트에서 쿼리 수를 센다
+logging:
+  level:
+    org.hibernate.stat: WARN
