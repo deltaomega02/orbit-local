@@ -124,10 +124,29 @@
   function thumbHtml(item, extraClass) {
     var c = catOf(item.mainCategory);
     var img = item.imageUrl
-      ? '<img src="' + esc(item.imageUrl) + '" alt="" loading="lazy" decoding="async" />'
+      ? '<img data-src="' + esc(item.imageUrl) + '" alt="" decoding="async" />'
       : '';
     return '<div class="thumb ' + (extraClass || '') + ' thumb--' + esc(item.mainCategory) + '">' +
       '<span class="thumb__emoji" aria-hidden="true">' + c.emoji + '</span>' + img + '</div>';
+  }
+
+  /**
+   * src 대신 data-src 로 심어 둔 이미지를 실제로 채운다.
+   * 서버가 /media/** 를 인증된 소유자에게만 내주기 때문에, 브라우저가 알아서 거는
+   * 요청(<img src>)으로는 토큰을 보낼 수 없다. innerHTML 로 그린 직후 불러 준다.
+   */
+  function hydrateImages(root) {
+    $$('img[data-src]', root).forEach(function (img) {
+      var src = img.getAttribute('data-src');
+      img.removeAttribute('data-src');
+      api.media.objectUrl(src).then(function (url) {
+        img.src = url;
+      }).catch(function () {
+        // 썸네일은 지워도 뒤의 플레이스홀더가 남는다. 그 외에는 자리만 비운다.
+        if (img.closest('.thumb')) img.remove();
+        else img.hidden = true;
+      });
+    });
   }
 
   // 깨진 이미지는 조용히 걷어내고 플레이스홀더를 남긴다. (error 는 버블링하지 않아 캡처로 듣는다)
@@ -360,6 +379,7 @@
     }
 
     closetGrid.innerHTML = items.map(clothesCardHtml).join('');
+    hydrateImages(closetGrid);
   }
 
   function clothesCardHtml(item) {
@@ -668,6 +688,7 @@
       ? '오늘 만든 코디 ' + state.coords.length + '개'
       : '';
     coordList.innerHTML = state.coords.map(coordCardHtml).join('');
+    hydrateImages(coordList);
   }
 
   function timeOf(iso) {
@@ -693,7 +714,7 @@
     }).join('');
 
     var tryOn = c.tryOnImageUrl
-      ? '<figure class="tryon__result"><img src="' + esc(c.tryOnImageUrl) + '" alt="가상 착용 결과" loading="lazy" />' +
+      ? '<figure class="tryon__result"><img data-src="' + esc(c.tryOnImageUrl) + '" alt="가상 착용 결과" />' +
         '<figcaption>가상 착용 결과</figcaption></figure>'
       : '<div class="tryon__idle">' +
           '<button class="btn btn--ghost btn--block" data-action="tryon" data-label="입어보기">' +
@@ -812,8 +833,9 @@
       setTimeout(function () {
         if (url) {
           $('.tryon', card).innerHTML =
-            '<figure class="tryon__result"><img src="' + esc(url) + '" alt="가상 착용 결과" />' +
+            '<figure class="tryon__result"><img data-src="' + esc(url) + '" alt="가상 착용 결과" />' +
             '<figcaption>가상 착용 결과</figcaption></figure>';
+          hydrateImages(card);
         } else {
           progress.hidden = true;
           btn.hidden = false;
@@ -893,10 +915,15 @@
     var img = $('#body-photo-img');
     var ph = $('#body-photo-placeholder');
     if (me && me.bodyPhotoUrl) {
-      img.src = me.bodyPhotoUrl;
-      img.hidden = false;
-      ph.hidden = true;
       $('#body-photo-label').textContent = '사진 바꾸기';
+      api.media.objectUrl(me.bodyPhotoUrl).then(function (url) {
+        img.src = url;
+        img.hidden = false;
+        ph.hidden = true;
+      }).catch(function () {
+        img.hidden = true;
+        ph.hidden = false;
+      });
     } else {
       img.hidden = true;
       img.removeAttribute('src');
@@ -928,7 +955,9 @@
     $('#body-photo-label').classList.add('is-disabled');
 
     api.users.uploadBodyPhoto(file).then(function (res) {
-      URL.revokeObjectURL(localUrl);
+      // 서버 사진을 받아 끼울 때까지 미리보기를 살려 둔다. 바로 revoke 하면
+      // 그 사이 이미지가 깜빡인다.
+      setTimeout(function () { URL.revokeObjectURL(localUrl); }, 2000);
       state.user = state.user || {};
       state.user.bodyPhotoUrl = (res && res.bodyPhotoUrl) || previousUrl;
       renderProfile();

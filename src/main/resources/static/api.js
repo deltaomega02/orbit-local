@@ -75,6 +75,9 @@
    * ---------------------------------------------------------------- */
   var refreshInFlight = null;
 
+  /** 경로 → blob URL 약속. 같은 사진을 여러 번 받지 않게 한다. */
+  var mediaCache = {};
+
   function doRefresh() {
     if (refreshInFlight) return refreshInFlight;
 
@@ -128,6 +131,7 @@
       throw NetworkError();
     }).then(function (res) {
       if (res.status === 204) return null;
+      if (res.ok && opts.blob) return res.blob();
 
       return res.text().then(function (text) {
         var parsed = null;
@@ -143,6 +147,7 @@
   /** 세션 종료. 토큰을 버리고 화면을 로그인으로 되돌린 뒤 항상 reject 한다. */
   function endSession() {
     tokens.clear();
+    api.media.clearCache();
     onSessionExpired();
     return Promise.reject(ApiError(401, { error: 'session_expired' }));
   }
@@ -197,7 +202,7 @@
           return data;
         });
       },
-      logout: function () { tokens.clear(); }
+      logout: function () { tokens.clear(); api.media.clearCache(); }
     },
 
     users: {
@@ -235,6 +240,34 @@
       },
       remove: function (id) {
         return request('/api/clothes/' + encodeURIComponent(id), { method: 'DELETE' });
+      }
+    },
+
+    /**
+     * 이미지. 서버가 /media/** 를 인증된 소유자에게만 내주므로,
+     * <img src="/media/..."> 는 헤더를 붙일 수 없어 그대로는 못 본다.
+     * 그래서 fetch 로 받아 blob: URL 로 바꿔 끼운다. 같은 경로는 한 번만 받는다.
+     */
+    media: {
+      objectUrl: function (path) {
+        if (!path) return Promise.reject(new Error('no path'));
+        if (path.indexOf('/media/') === -1) return Promise.resolve(path); // 외부/공개 URL
+        if (!mediaCache[path]) {
+          mediaCache[path] = request(path, { blob: true })
+            .then(function (blob) { return URL.createObjectURL(blob); })
+            .catch(function (err) { delete mediaCache[path]; throw err; });
+        }
+        return mediaCache[path];
+      },
+      /** 로그아웃 시 메모리에 남은 개인 사진을 버린다. */
+      clearCache: function () {
+        Object.keys(mediaCache).forEach(function (k) {
+          var p = mediaCache[k];
+          delete mediaCache[k];
+          p.then(function (url) {
+            if (typeof url === 'string' && url.indexOf('blob:') === 0) URL.revokeObjectURL(url);
+          }, function () {});
+        });
       }
     },
 
