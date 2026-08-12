@@ -36,4 +36,22 @@ class UserService(
         previous?.let { mediaStorage.deleteQuietly(it) }
         return stored.relativePath
     }
+
+    /**
+     * 스타일 선호도 교체.
+     *
+     * 빈 문자열/공백만 보내면 null 로 지운다. "지우기" 엔드포인트를 따로 두지 않은
+     * 이유는 이 값이 컬렉션이 아니라 단일 값이라 "빈 값으로 치환"이 곧 삭제이기
+     * 때문이다. 화면에서도 입력칸을 비우고 저장하는 동작 하나뿐이다.
+     *
+     * 200자에서 자른다. 이 문장은 추천을 부를 때마다 프롬프트에 실려 나가므로
+     * 길이가 그대로 토큰 비용이고, 길수록 나머지 규칙이 묻힌다. DB 컬럼 길이와
+     * 같은 값이라 여기서 자르지 않으면 저장 시점에 잘리거나 실패한다.
+     */
+    @Transactional
+    fun updateStylePreference(id: Long, preference: String?): String? {
+        val user = userRepository.findById(id).orElseThrow { UserNotFoundException(id) }
+        user.stylePreference = preference?.trim()?.ifEmpty { null }?.take(200)
+        return user.stylePreference // 더티 체킹으로 반영된다
+    }
 }

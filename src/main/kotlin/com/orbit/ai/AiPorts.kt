@@ -47,6 +47,14 @@ data class RecommendRequest(
     val candidates: List<RecommendCandidate>,
     /** 오늘 이미 나온 조합. 프롬프트에 넣어 회피를 "요청"한다(보장은 서버가 한다). */
     val avoidCombinations: List<Set<Long>> = emptyList(),
+    /**
+     * 사용자가 자기 말로 적은 취향(예: "카고팬츠 자주 넣어줘"). 없으면 null.
+     *
+     * 이 값은 **후보를 거르는 조건이 아니라 우선순위**로 쓰인다. 취향에 맞는 옷이
+     * 옷장에 없을 수도 있는데, 그때 필터처럼 동작하면 추천이 아예 안 나오거나
+     * 모델이 없는 옷을 지어내게 된다. 그 경계는 프롬프트에서 명시한다.
+     */
+    val stylePreference: String? = null,
 )
 
 data class OutfitSuggestion(

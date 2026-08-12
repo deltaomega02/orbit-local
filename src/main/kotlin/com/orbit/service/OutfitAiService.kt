@@ -80,6 +80,9 @@ class OutfitAiService(
                     RecommendCandidate(requireNotNull(it.id), it.name, it.mainCategory, it.color, it.detail)
                 },
                 avoidCombinations = coordinationService.todayCoordinations(ownerId).map { it.clothesIdSet() },
+                // 저장만 하고 쓰지 않으면 설정 화면이 장식이 된다. 이 값이 실제로
+                // 프롬프트까지 도달하는지는 테스트로 고정해 뒀다(StylePreferenceTest).
+                stylePreference = userRepository.findById(ownerId).orElse(null)?.stylePreference,
             ),
         )
 
