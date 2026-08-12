@@ -28,7 +28,11 @@ orbit:
   jwt:
     secret: ${ORBIT_JWT_SECRET:dev-only-insecure-secret-do-not-use-in-production-0123456789}
     access-token-validity: 15m     # 짧게. 무상태 검증이라 탈퇴/차단 반영 지연의 상한이 된다
-    refresh-token-validity: 14d
+    # 365일. 로그아웃 버튼이 없는 개인용 로컬 앱이라, 짧은 만료는 공격자가 아니라
+    # 사용자만 끊는다(회전도 폐기 저장소도 없어 훔친 쪽은 만료까지 그냥 쓴다).
+    # 대가는 탈취 시 노출 기간이 최대 1년이라는 것. 판단의 전체 근거는
+    # JwtProperties.refreshTokenValidity 주석과 README 에 적어 뒀다.
+    refresh-token-validity: 365d
 
   media:
     dir: ${ORBIT_MEDIA_DIR:./data/media}   # .gitignore 의 data/ 안이라 저장소에 섞이지 않는다
