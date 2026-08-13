@@ -219,8 +219,13 @@
             <span class="action__spinner" aria-hidden="true"></span>
           </button>
 
+          <!-- 추천도 7초쯤 걸린다. 입어보기와 같은 진행 감각을 준다. -->
+          <div class="progress" id="home-progress" hidden>
+            <div class="progress__track"><div class="progress__fill" id="home-progress-fill"></div></div>
+            <p class="progress__label" role="status" id="home-progress-label">준비하는 중…</p>
+          </div>
+
           <div class="note" id="home-retry" role="status" hidden>
-            <span class="note__spinner" aria-hidden="true"></span>
             <span id="home-retry-msg"></span>
           </div>
           <div class="note note--error" id="home-error" role="alert" hidden>
@@ -451,6 +456,14 @@
         <p class="panel__desc">‘입어보기’에 쓰여요. 전신이 다 나오고 밝은 곳에서 찍은 사진이 가장 잘 나와요.</p>
 
         <div class="panel__body">
+          <!-- '입어보기'에서 여기로 보내 놓고 돌아갈 길을 안 주면, 사용자는 사진을
+               올린 뒤 홈에서 그 코디를 다시 찾아 들어가야 한다. 어디서 왔는지
+               기억했다가 그 자리로 되돌려 준다. -->
+          <div class="note" id="body-photo-resume" role="status" hidden>
+            <span class="note__body" id="body-photo-resume-msg"></span>
+            <button class="btn btn--tiny btn--primary" id="btn-body-photo-resume" type="button">입어보기 계속하기</button>
+          </div>
+
           <div class="note note--error" id="body-photo-error" role="alert" hidden></div>
 
           <div class="bodyphoto">

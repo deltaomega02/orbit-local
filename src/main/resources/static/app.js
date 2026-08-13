@@ -841,6 +841,21 @@
 
   var recSlowTimer = null;
   var recAttempt = 0;
+  var recProgress = null;
+
+  /**
+   * 추천 대기.
+   *
+   * 같은 앱의 입어보기는 진행 바 + 단계 문구로 기다리게 하는데, 추천은 7초 동안
+   * 스피너 하나뿐이었다. 기다림의 질이 화면마다 다를 이유가 없다. 같은 부품을 쓴다.
+   */
+  var REC_STAGES = [
+    [0,  '옷장을 펼치는 중…'],
+    [22, '오늘 입을 만한 옷을 추리는 중…'],
+    [50, '색과 소재를 맞춰 보는 중…'],
+    [75, '고른 이유를 적는 중…'],
+    [92, '거의 다 됐어요…']
+  ];
 
   function recStatus(msg) {
     $('#home-retry-msg').textContent = msg;
@@ -850,17 +865,23 @@
   function recArmSlowHint() {
     clearTimeout(recSlowTimer);
     recSlowTimer = setTimeout(function () {
-      recStatus(recAttempt
-        ? '다른 조합을 찾는 중… (' + recAttempt + '/' + MAX_DUP_RETRY + ') ' +
-          '생각보다 오래 걸리고 있어요. 조금만 더 기다려 주세요.'
-        : '오늘의 조합을 고르는 중이에요. 생각보다 오래 걸리고 있어요. 조금만 더 기다려 주세요.');
+      recStatus('생각보다 오래 걸리고 있어요. 조금만 더 기다려 주세요.');
     }, SLOW_HINT_MS);
+  }
+
+  function recStart() {
+    recStop();
+    show($('#home-progress'), true);
+    recProgress = startProgress($('#home-progress-fill'), $('#home-progress-label'), REC_STAGES);
+    recArmSlowHint();
   }
 
   function recStop() {
     clearTimeout(recSlowTimer);
     recSlowTimer = null;
     recAttempt = 0;
+    if (recProgress) { recProgress.stop(); recProgress = null; }
+    show($('#home-progress'), false);
     show($('#home-retry'), false);
   }
 
@@ -871,21 +892,26 @@
     var done = busy(btn, '고르는 중…');
     setNote($('#home-error'), '', $('#home-error-msg'));
     show($('#home-error-action'), false);
-    recStop();
-    recArmSlowHint();
+    recStart();
 
     recommendWithRetry(function (attempt) {
       // 서버가 409(이미 입은 조합)를 주면 클라이언트가 같은 요청을 다시 보낸다.
       // 그동안 버튼이 "고르는 중…" 에 머물러 있으면 사용자는 그냥 느린 줄 안다.
-      // 무엇을 다시 하고 있는지, 몇 번째인지를 밖으로 꺼낸다.
+      // 무엇을 다시 하고 있는지, 몇 번째인지를 진행 바 문구로 꺼낸다.
       recAttempt = attempt;
-      recStatus('같은 조합이 나와서 다른 조합을 찾는 중… (' + attempt + '/' + MAX_DUP_RETRY + ')');
+      if (recProgress) {
+        recProgress.hold('같은 조합이 나와서 다시 고르는 중… (' + attempt + '/' + MAX_DUP_RETRY + ')');
+      }
       recArmSlowHint();
     }).then(function (created) {
-      recStop();
+      if (recProgress) recProgress.finish('골랐어요!');
+      clearTimeout(recSlowTimer);
+      show($('#home-retry'), false);
       state.history.loaded = false;
+      state.stats.loaded = false;
       // 서버가 오늘 목록의 주인이다. 로컬에서 합치지 않고 다시 읽는다.
       return loadHome().then(function () {
+        recStop();
         toast('오늘의 코디를 골랐어요.');
         if (created && created.id) openCoord(created.id, created.title);
       });
@@ -1673,6 +1699,10 @@
     if (e.target.closest('#coord-retry')) { state.coord.data = null; onCoordEnter(state.coord.id); return; }
 
     if (e.target.closest('[data-action="go-body-photo"]')) {
+      // 사진만 올리고 끝나면 사용자는 하던 코디를 홈에서 다시 찾아 들어가야 한다.
+      // 어디서 왔는지 적어 두고, 등록이 끝나면 그 자리로 되돌린다.
+      var c = state.coord.data;
+      state.pendingTryOn = { id: state.coord.id, title: (c && c.title) || '코디' };
       navigate('more');
       setTimeout(function () {
         var el = $('#body-photo-preview');
@@ -1822,15 +1852,18 @@
    * 느려지며 96% 에서 멈춘다 — "곧 끝날 것 같은데 안 끝나는" 느낌을 피하려고
    * 100% 는 실제 응답이 왔을 때만 찍는다.
    */
-  function startProgress(fillEl, labelEl) {
-    var stages = [
-      [0, '준비하는 중…'],
-      [20, '전신 사진을 살펴보는 중…'],
-      [45, '옷을 하나씩 입혀 보는 중…'],
-      [72, '마무리하는 중… 조금만 기다려 주세요'],
-      [92, '거의 다 됐어요…']
-    ];
+  var TRYON_STAGES = [
+    [0, '준비하는 중…'],
+    [20, '전신 사진을 살펴보는 중…'],
+    [45, '옷을 하나씩 입혀 보는 중…'],
+    [72, '마무리하는 중… 조금만 기다려 주세요'],
+    [92, '거의 다 됐어요…']
+  ];
+
+  function startProgress(fillEl, labelEl, stages) {
+    stages = stages || TRYON_STAGES;
     var pct = 0;
+    var held = null;   // 단계 문구 대신 이 문장을 붙잡아 둔다 (예: 재시도 중)
     var timer = setInterval(function () {
       pct += Math.max(0.35, (96 - pct) * 0.035);
       if (pct > 96) pct = 96;
@@ -1839,6 +1872,10 @@
 
     function apply() {
       fillEl.style.setProperty('--progress', pct.toFixed(1) + '%');
+      if (held) {
+        if (labelEl.textContent !== held) labelEl.textContent = held;
+        return;
+      }
       for (var i = stages.length - 1; i >= 0; i--) {
         if (pct >= stages[i][0]) {
           if (labelEl.textContent !== stages[i][1]) labelEl.textContent = stages[i][1];
@@ -1850,10 +1887,13 @@
 
     return {
       stop: function () { clearInterval(timer); },
-      finish: function () {
+      /** 단계 진행과 무관하게 지금 무슨 일이 벌어지는지 말해야 할 때. */
+      hold: function (text) { held = text; apply(); },
+      finish: function (text) {
         clearInterval(timer);
+        held = null;
         fillEl.style.setProperty('--progress', '100%');
-        labelEl.textContent = '완성됐어요!';
+        labelEl.textContent = text || '완성됐어요!';
       }
     };
   }
@@ -2134,7 +2174,7 @@
       toast('‘' + created.name + '’ 을(를) 옷장에 담았어요.');
       state.home.loaded = false;
       state.closet.loaded = true;
-      statsLoaded = false;
+      state.stats.loaded = false;
       // 총 개수·정렬이 서버 기준이므로 첫 페이지부터 다시 읽는다.
       if (current().name !== 'closet') navigate('closet');
       return loadClothes({ reset: true });
@@ -2148,13 +2188,12 @@
    * 더보기 / 설정
    * ================================================================ */
   var moreLoaded = false;
-  var statsLoaded = false;
 
   function onMoreEnter() {
     $('#more-email').textContent = (state.user && state.user.email) || '';
     renderBodyPhoto();
     renderAiState();
-    loadStats();
+    loadStats().then(renderStatsPanel).catch(function () {});
     if (moreLoaded) return;
     moreLoaded = true;
 
@@ -2165,41 +2204,90 @@
     }).catch(function () { /* 없으면 빈칸으로 둔다 */ });
   }
 
-  /* ---------------- 옷장 통계 ---------------- */
+  /* ---------------- 옷장 통계 ----------------
+   * 홈의 색인 줄과 더보기의 패널이 같은 값을 쓴다. 한 번만 읽고 둘이 나눠 쓴다. */
   function loadStats() {
-    if (statsLoaded) return;
-    statsLoaded = true;
-    api.clothes.stats().then(function (s) {
-      if (!s || s.__unavailable || s.total == null) { show($('#panel-stats'), false); return; }
-      var by = s.byCategory || {};
-      var rows = [
-        { label: 'Total', value: s.total },
-        { label: 'Top', value: by.TOP || 0 },
-        { label: 'Bottom', value: by.BOTTOM || 0 },
-        { label: 'Outer', value: by.OUTER || 0 }
-      ];
-      if (s.neverUsed != null) rows.push({ label: 'Never worn', value: s.neverUsed });
+    if (state.stats.loaded) return Promise.resolve(state.stats.data);
+    return api.clothes.stats().then(function (s) {
+      state.stats.loaded = true;
+      state.stats.data = (s && !s.__unavailable && s.total != null) ? s : null;
+      return state.stats.data;
+    }).catch(function (err) {
+      state.stats.loaded = true;
+      state.stats.data = null;
+      if (isExpired(err)) throw err;
+      return null;
+    });
+  }
 
-      var most = (s.mostUsed || []).slice(0, 3);
-      $('#stats-body').innerHTML =
-        '<div class="statrows">' + rows.map(function (r) {
-          return '<div class="statrow">' +
-            '<span class="statrow__label">' + esc(r.label) + '</span>' +
-            '<span class="statrow__value">' + esc(r.value) + '</span></div>';
-        }).join('') + '</div>' +
-        (most.length
-          ? '<div><p class="sectionlabel">Most Worn</p><ul class="specrows">' +
-              most.map(function (m) {
-                return '<li class="specrow"><span class="specrow__static">' +
-                  '<span class="specrow__label">' + esc(m.usedCount) + '회</span>' +
-                  '<span class="specrow__value">' + esc(m.name) + '</span></span></li>';
-              }).join('') + '</ul></div>'
-          : '');
-      show($('#panel-stats'), true);
-    }).catch(function () { show($('#panel-stats'), false); });
+  function renderStatsPanel() {
+    var s = state.stats.data;
+    if (!s) { show($('#panel-stats'), false); return; }
+
+    var by = s.byCategory || {};
+    var rows = [
+      { label: 'Total', value: s.total },
+      { label: 'Top', value: by.TOP || 0 },
+      { label: 'Bottom', value: by.BOTTOM || 0 },
+      { label: 'Outer', value: by.OUTER || 0 }
+    ];
+    if (s.neverUsed != null) rows.push({ label: 'Never worn', value: s.neverUsed });
+
+    var most = (s.mostUsed || []).slice(0, 3);
+    $('#stats-body').innerHTML =
+      '<div class="statrows">' + rows.map(function (r) {
+        return '<div class="statrow">' +
+          '<span class="statrow__label">' + esc(r.label) + '</span>' +
+          '<span class="statrow__value">' + esc(r.value) + '</span></div>';
+      }).join('') + '</div>' +
+      (most.length
+        ? '<div><p class="sectionlabel">Most Worn</p><ul class="specrows">' +
+            most.map(function (m) {
+              return '<li class="specrow"><span class="specrow__static">' +
+                '<span class="specrow__label">' + esc(m.usedCount) + '회</span>' +
+                '<span class="specrow__value">' + esc(m.name) + '</span></span></li>';
+            }).join('') + '</ul></div>'
+        : '');
+    show($('#panel-stats'), true);
   }
 
   /* ---------------- 전신 사진 ---------------- */
+
+  /**
+   * '입어보기' 에서 여기로 온 사람을 되돌려 보낸다.
+   *
+   * 오는 길("전신 사진이 필요해요" → 설정 화면)은 이미 잘 놓여 있었는데,
+   * 돌아가는 길이 없었다. 사진을 올리고 나면 그냥 설정 화면에 남겨져,
+   * 하던 코디를 홈에서 다시 찾아 들어가야 했다.
+   */
+  function renderTryOnResume() {
+    var p = state.pendingTryOn;
+    var box = $('#body-photo-resume');
+    show(box, !!p);
+    if (!p) return;
+
+    var hasPhoto = !!(state.user && state.user.bodyPhotoUrl);
+    $('#body-photo-resume-msg').textContent = hasPhoto
+      ? '전신 사진이 준비됐어요. ‘' + p.title + '’ 으로 돌아가 입어볼 수 있어요.'
+      : '‘' + p.title + '’ 입어보기를 하려다 오셨어요. 사진을 등록하면 이어서 할 수 있어요.';
+  }
+
+  $('#btn-body-photo-resume').addEventListener('click', function () {
+    var p = state.pendingTryOn;
+    if (!p) return;
+    state.pendingTryOn = null;
+    show($('#body-photo-resume'), false);
+    navigate('coord', { id: p.id, title: p.title });
+    // 돌아온 자리에서 무엇을 누르면 되는지 바로 보이게 한다.
+    // AI 호출은 사용자가 직접 누를 때만 한다.
+    setTimeout(function () {
+      var host = $('#coord-detail');
+      var btn = $('[data-action="tryon"]', host) || $('[data-action="ask-tryon-again"]', host);
+      if (btn) { scrollIntoViewSafely(btn); btn.focus(); }
+      else scrollIntoViewSafely($('[data-tryon]', host));
+    }, 320);
+  });
+
   function renderBodyPhoto() {
     var me = state.user;
     var img = $('#body-photo-img');
@@ -2209,6 +2297,7 @@
 
     // 이니셜 판(NONE)은 눈으로만 읽는 자리다. 화면 낭독기에는 이 문장이 간다.
     if (status) status.textContent = (me && me.bodyPhotoUrl) ? '전신 사진 등록됨' : '등록된 전신 사진 없음';
+    renderTryOnResume();
 
     if (me && me.bodyPhotoUrl) {
       if (label) label.textContent = '사진 바꾸기';
@@ -2258,7 +2347,10 @@
       state.user = state.user || {};
       state.user.bodyPhotoUrl = (res && res.bodyPhotoUrl) || previousUrl;
       renderBodyPhoto();
-      toast('전신 사진을 저장했어요.');
+      toast(state.pendingTryOn
+        ? '전신 사진을 저장했어요. 이제 입어보기로 돌아갈 수 있어요.'
+        : '전신 사진을 저장했어요.');
+      if (state.pendingTryOn) scrollIntoViewSafely($('#body-photo-resume'));
     }).catch(function (err) {
       URL.revokeObjectURL(localUrl);
       if (state.user) state.user.bodyPhotoUrl = previousUrl;
