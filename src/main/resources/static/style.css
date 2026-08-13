@@ -741,8 +741,14 @@ input:focus-visible, textarea:focus-visible { outline: 2px solid var(--ink); out
 .confirm__actions { display: flex; gap: var(--s2); }
 .btn--danger-text { color: var(--danger); }
 
+/* 되돌릴 수 있지만 값이 드는 일(AI 재호출)을 물을 때. 위험색은 쓰지 않는다 —
+   빨간 상자는 "지워진다"는 뜻이어서, 다시 만드는 일에 붙이면 겁을 준다. */
+.confirm--quiet { background: var(--paper-sunk); }
+.confirm--quiet .confirm__q { color: var(--ink); font-weight: 400; }
+
 /* 진행 표시 — 액센트는 선으로만 쓴다 */
 .tryon { margin-top: var(--s4); display: grid; gap: var(--s3); }
+.tryon__hint { font-size: 13px; color: var(--ink-soft); text-align: center; }
 .progress { display: grid; gap: var(--s3); }
 .progress__track { height: 2px; background: var(--rule); border-radius: var(--r-pill); overflow: hidden; }
 .progress__fill {

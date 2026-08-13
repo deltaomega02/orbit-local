@@ -1237,6 +1237,59 @@
     });
   }
 
+  /**
+   * 입어보기 자리.
+   *
+   * 예전에는 사진 우하단의 라벨 없는 ✦ 아이콘 하나가 유일한 진입점이었다.
+   * 이 앱의 하이라이트 기능인데 아이콘만으로는 무엇인지 알 수 없었고,
+   * 결과가 생기면 그 버튼이 DOM 에서 통째로 사라져 다시 만들 길도 없었다.
+   * 그래서 (1) 글자가 있는 버튼으로 바꾸고 (2) 결과가 있어도 "다시 만들기" 를 남긴다.
+   * 재생성은 AI 를 한 번 더 부르는 일이라 확인을 한 번 받는다.
+   */
+  function tryOnBlockHtml(c, items) {
+    var hasResult = !!c.tryOnImageUrl;
+    // 사진이 없는 옷은 이름만으로 그려진다. 결과가 실제 옷과 달라지는 가장 큰 이유다.
+    var noPhoto = items.filter(function (it) { return !it.imageUrl; });
+
+    return '<div class="tryon" data-tryon>' +
+      (hasResult
+        ? '<button class="btn btn--ghost btn--block" type="button" data-action="ask-tryon-again">' +
+            icon('sparkle', 'ico--sm accent') +
+            '<span class="btn__text">다시 만들기</span>' +
+          '</button>'
+        : '<button class="btn btn--primary btn--block" type="button" data-action="tryon">' +
+            '<span class="btn__spinner" aria-hidden="true"></span>' +
+            icon('sparkle', 'ico--sm') +
+            '<span class="btn__text">입어보기</span>' +
+          '</button>') +
+      (hasResult ? '' : '<p class="tryon__hint">등록한 전신 사진에 이 코디를 입혀 봐요.</p>') +
+
+      // 막지는 않는다. 결과가 왜 실제와 다를 수 있는지만 미리 알려 준다.
+      (noPhoto.length
+        ? '<div class="note note--warn">사진이 없는 옷(' +
+            esc(noPhoto.map(function (it) { return it.name; }).join(', ')) +
+            ')은 이름만 보고 그리기 때문에 실제와 다르게 그려질 수 있어요.</div>'
+        : '') +
+
+      '<div class="confirm confirm--quiet" role="alertdialog" aria-label="다시 만들기 확인" data-tryon-again hidden>' +
+        '<p class="confirm__q">AI 를 한 번 더 불러 새로 만들어요. 지금 이미지는 새 이미지로 바뀝니다.</p>' +
+        '<div class="confirm__actions">' +
+          '<button class="btn btn--ghost btn--tiny" type="button" data-action="cancel-tryon-again">취소</button>' +
+          '<button class="btn btn--primary btn--tiny" type="button" data-action="tryon">' +
+            '<span class="btn__spinner" aria-hidden="true"></span>' +
+            '<span class="btn__text">다시 만들기</span>' +
+          '</button>' +
+        '</div>' +
+      '</div>' +
+
+      '<div class="progress" hidden>' +
+        '<div class="progress__track"><div class="progress__fill"></div></div>' +
+        '<p class="progress__label" role="status">준비하는 중…</p>' +
+      '</div>' +
+      '<div class="note note--error tryon__error" role="alert" hidden></div>' +
+    '</div>';
+  }
+
   function renderCoord() {
     var c = state.coord.data;
     if (!c) return;
@@ -1259,20 +1312,9 @@
           '<span class="num">' + esc(stampOf(c.createdAt)) + '</span>' +
         '</div>' +
 
-        '<div class="detail__media">' +
-          lookFrameHtml(c) + aiPillHtml() +
-          (c.tryOnImageUrl ? '' :
-            '<button class="photobtn" type="button" data-action="tryon" aria-label="입어보기">' +
-              icon('sparkle', 'accent') + '</button>') +
-        '</div>' +
+        '<div class="detail__media">' + lookFrameHtml(c) + aiPillHtml() + '</div>' +
 
-        '<div class="tryon" data-tryon>' +
-          '<div class="progress" hidden>' +
-            '<div class="progress__track"><div class="progress__fill"></div></div>' +
-            '<p class="progress__label">준비하는 중…</p>' +
-          '</div>' +
-          '<div class="note note--error tryon__error" role="alert" hidden></div>' +
-        '</div>' +
+        tryOnBlockHtml(c, items) +
 
         '<div class="detail__head">' +
           '<h2 class="detail__title">' + esc(c.title || '오늘의 코디') + '</h2>' +
@@ -1355,22 +1397,47 @@
       return;
     }
 
+    // 재생성은 AI 를 한 번 더 부르는 일이다. 곧바로 실행하지 않고 한 번 묻는다.
+    if (e.target.closest('[data-action="ask-tryon-again"]')) { showTryOnAgain(true); return; }
+    if (e.target.closest('[data-action="cancel-tryon-again"]')) { showTryOnAgain(false); return; }
+
     var tryOnBtn = e.target.closest('[data-action="tryon"]');
     if (tryOnBtn) runTryOn(tryOnBtn);
   });
 
   /* ---------------- 입어보기 ---------------- */
+  function showTryOnAgain(on) {
+    var host = $('[data-tryon]', $('#coord-detail'));
+    if (!host) return;
+    var box = $('[data-tryon-again]', host);
+    var ask = $('[data-action="ask-tryon-again"]', host);
+    show(box, on);
+    show(ask, !on);
+    var focusTarget = on ? $('[data-action="cancel-tryon-again"]', host) : ask;
+    if (focusTarget) focusTarget.focus();
+  }
+
   function runTryOn(btn) {
     if (!requireAi()) return;
 
     var host = $('[data-tryon]', $('#coord-detail'));
     var progress = $('.progress', host);
     var errEl = $('.tryon__error', host);
+    // 큰 버튼과 확인 상자의 버튼이 동시에 살아 있을 수 있다.
+    // 값이 드는 호출이므로 진행 중에는 이 블록의 버튼을 전부 잠근다.
+    var locked = $$('button', host);
 
     show(errEl, false);
-    btn.disabled = true;
+    locked.forEach(function (b) { b.disabled = true; });
     btn.classList.add('is-busy');
+    btn.setAttribute('aria-busy', 'true');
     show(progress, true);
+
+    function release() {
+      locked.forEach(function (b) { b.disabled = false; });
+      btn.classList.remove('is-busy');
+      btn.removeAttribute('aria-busy');
+    }
 
     var sim = startProgress($('.progress__fill', progress), $('.progress__label', progress));
 
@@ -1385,20 +1452,18 @@
       setTimeout(function () {
         if (url) {
           state.home.loaded = false;
-          renderCoord();
+          renderCoord();   // 블록이 통째로 다시 그려진다 → 버튼은 "다시 만들기" 가 된다
           toast('입어본 모습을 만들었어요.');
         } else {
           show(progress, false);
-          btn.disabled = false;
-          btn.classList.remove('is-busy');
+          release();
           setNote(errEl, '이미지를 받지 못했어요. 다시 시도해 주세요.');
         }
       }, 420);
     }).catch(function (err) {
       sim.stop();
       show(progress, false);
-      btn.disabled = false;
-      btn.classList.remove('is-busy');
+      release();
       if (isExpired(err)) return;
 
       if (err.isApiError && err.code === 'no_body_photo') {
