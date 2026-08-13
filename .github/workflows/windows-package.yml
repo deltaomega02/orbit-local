@@ -123,6 +123,13 @@ jobs:
           #   jdk.charsets   - 일본어 Windows 의 레거시 인코딩
           #   jdk.zipfs      - jar 안을 파일시스템으로 여는 경로
           #   jdk.management - JMX 계열. 스프링 액추에이터가 없어도 부트가 만진다
+          #
+          # -Xmx 768m → 1536m. 업로드 상한을 40MB 로 열면서 서버가 사진을 직접 디코드하게
+          # 됐다(ImageNormalizer). 픽셀 버퍼 크기는 압축 크기와 무관하게 가로×세로×4 라,
+          # 허용 상한인 5천만 픽셀짜리 사진 한 장이 200MB 다. 여기에 원본 바이트와 축소
+          # 중간 단계가 얹히면 768m 로는 사진 한 장에 OOM 이 난다 — 그리고 그 사고는
+          # 빌드가 아니라 사용자 기계에서 처음 터진다. -Xmx 는 예약이 아니라 상한이므로
+          # 평소 점유량은 달라지지 않는다.
           jpackage `
             --type app-image `
             --name "$env:APP_NAME" `
@@ -137,7 +144,7 @@ jobs:
             --java-options "-Dorbit.desktop=true" `
             --java-options "-Djava.awt.headless=false" `
             --java-options "-Dfile.encoding=UTF-8" `
-            --java-options "-Xmx768m" `
+            --java-options "-Xmx1536m" `
             --add-modules java.se,jdk.unsupported,jdk.crypto.ec,jdk.localedata,jdk.charsets,jdk.zipfs,jdk.management
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
