@@ -10,7 +10,10 @@
   --card:         #FFFFFF;
   --ink:          #17150F;
   --ink-soft:     #6B6459;
-  --ink-faint:    #A69E91;
+  /* 11px 인덱스 라벨과 12px 날짜에 쓰인다. 소형 텍스트라 대비가 곧 가독성이다.
+     기존 #A69E91 은 종이 배경에서 2.27~2.65:1 로 WCAG AA(4.5:1)에 한참 못 미쳤다.
+     지금 값: paper 5.30 · paper-sunk 4.85 · card 5.66 */
+  --ink-faint:    #6E6659;
   --rule:         #E4DED4;
 
   --accent:       #5B4FD6;
