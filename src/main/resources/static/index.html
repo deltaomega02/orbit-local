@@ -218,17 +218,49 @@
         <div class="sk sk--row"></div>
       </div>
 
-      <div id="home-body" hidden>
+      <!-- 넓은 화면에서는 이 다섯 덩어리가 2열 격자로 재배치된다.
+           좁은 폭에서는 지금까지처럼 위에서 아래로 흐른다. (style.css 의 .home) -->
+      <div id="home-body" class="home" hidden>
 
         <!-- 옷장 색인 — 더보기 3단계 깊이에 묻혀 있던 통계를 첫 화면으로 올린다.
              기록이 쌓이는 게 보이는 것이 이 앱의 유일한 재방문 이유다. -->
-        <section class="block block--tight" id="home-index-section" hidden>
+        <section class="block block--tight home__index" id="home-index-section" hidden>
           <div class="statstrip" id="home-index"></div>
         </section>
 
         <!-- 주 행동 — 세로로 꽉 찬 사진 아래에 있으면 첫 화면에서 보이지 않는다.
-             오늘의 기록보다 위에 둬서 열자마자 손이 닿게 한다. -->
-        <section class="block">
+             오늘의 기록보다 위에 둬서 열자마자 손이 닿게 한다.
+
+             '오늘 상황' 은 이 버튼 바로 옆에 산다. 설정의 스타일 선호도(늘 반영되는
+             취향)와 달리 이번 한 번만 쓰이는 한 줄이라, 추천을 누르는 그 자리에
+             있어야 한다. 비워 둔 채 버튼만 눌러도 지금까지처럼 곧장 돈다. -->
+        <section class="block home__action" id="home-action-section">
+          <div class="situation" id="home-situation">
+            <p class="indexlabel">Today’s Context</p>
+            <h2 class="situation__title">오늘 상황 <span class="situation__opt">선택</span></h2>
+            <p class="situation__desc">한 줄 적어 두면 그걸 반영해서 골라요. 비워 두면 평소처럼 골라 드려요.</p>
+
+            <div class="chips chips--wrap" id="situation-chips" role="group" aria-label="자주 쓰는 상황">
+              <button class="chip" type="button" data-situation="출근" aria-pressed="false">출근</button>
+              <button class="chip" type="button" data-situation="데이트" aria-pressed="false">데이트</button>
+              <button class="chip" type="button" data-situation="친구 만남" aria-pressed="false">친구 만남</button>
+              <button class="chip" type="button" data-situation="운동" aria-pressed="false">운동</button>
+              <button class="chip" type="button" data-situation="비 오는 날" aria-pressed="false">비 오는 날</button>
+              <button class="chip" type="button" data-situation="추운 날" aria-pressed="false">추운 날</button>
+              <button class="chip" type="button" data-situation="더운 날" aria-pressed="false">더운 날</button>
+            </div>
+
+            <div class="field situation__field">
+              <label for="situation-input" class="vh">오늘 상황 (선택)</label>
+              <input type="text" id="situation-input" maxlength="100" autocomplete="off"
+                     placeholder="예) 비 오고 쌀쌀해" />
+              <p class="field__hint situation__hint">
+                <span class="num"><span id="situation-count">0</span> / 100</span>
+                <button class="linkbtn situation__clear" id="btn-situation-clear" type="button" hidden>지우기</button>
+              </p>
+            </div>
+          </div>
+
           <button class="action" id="btn-recommend" type="button">
             <span class="action__icon accent"><svg class="ico" aria-hidden="true"><use href="#i-sparkle" /></svg></span>
             <span class="action__text">
@@ -257,7 +289,7 @@
         </section>
 
         <!-- 오늘 -->
-        <section class="block">
+        <section class="block home__main">
           <!-- LOOK 카드가 자기 번호를 이미 달고 나오므로, 카드가 있을 때는 이 라벨을 접는다.
                인덱스 라벨이 두 줄로 겹치면 서명이 아니라 실수처럼 보인다. -->
           <p class="indexlabel" id="home-today-label">Today</p>
@@ -265,7 +297,7 @@
         </section>
 
         <!-- 최근 -->
-        <section class="block" id="home-recent-section" hidden>
+        <section class="block home__recent" id="home-recent-section" hidden>
           <div class="block__head">
             <p class="indexlabel">Archive</p>
             <button class="linkbtn" id="btn-see-all" type="button">
@@ -278,7 +310,7 @@
         </section>
 
         <!-- 옷장이 비었을 때 -->
-        <section class="block" id="home-onboard" hidden>
+        <section class="block home__onboard" id="home-onboard" hidden>
           <div class="empty">
             <p class="indexlabel">Wardrobe</p>
             <h2 class="empty__title">옷장을 먼저 채워 주세요</h2>
@@ -572,7 +604,14 @@
 
   </div><!-- /.views -->
 
+  <!-- 좁은 폭에서는 하단 탭바, 넓은 폭에서는 왼쪽 세로 내비게이션.
+       한 벌의 마크업으로 두 형태를 만든다 — 상태(활성 표시)를 두 곳에서
+       따로 관리하면 반드시 어긋난다. 워드마크는 넓은 폭에서만 나온다. -->
   <nav class="tabbar" id="tabbar" aria-label="주요 화면">
+    <div class="brandmark navbrand" aria-hidden="true">
+      <p class="wordmark">ORBIT</p>
+      <p class="wordmark__sub">AI Stylist</p>
+    </div>
     <button class="tabbar__item is-active" data-nav="home" type="button" aria-current="page">
       <svg class="ico" aria-hidden="true"><use href="#i-home" /></svg><span class="tabbar__label">홈</span>
     </button>
@@ -644,14 +683,47 @@
       </div>
     </fieldset>
 
-    <div class="field">
-      <label for="add-color">색상</label>
-      <input type="text" id="add-color" maxlength="20" placeholder="예) 그레이 (선택)" />
+    <!-- 아래 여섯 칸은 사진을 고르면 자동으로 채워지고, 언제든 직접 고칠 수 있다.
+         서버가 아직 일부 항목을 받지 않을 수 있으므로 어느 칸이 비어도 저장은 된다. -->
+    <div class="formgrid">
+      <div class="field">
+        <label for="add-subcategory">세부 분류</label>
+        <input type="text" id="add-subcategory" maxlength="30" placeholder="예) 맨투맨 (선택)" />
+      </div>
+
+      <div class="field">
+        <label for="add-color">색상</label>
+        <input type="text" id="add-color" maxlength="20" placeholder="예) 그레이 (선택)" />
+      </div>
+
+      <div class="field">
+        <label for="add-material">소재</label>
+        <input type="text" id="add-material" maxlength="30" placeholder="예) 면 (선택)" />
+      </div>
+
+      <div class="field">
+        <label for="add-fit">핏</label>
+        <input type="text" id="add-fit" maxlength="30" list="list-fit" placeholder="예) 오버핏 (선택)" />
+        <datalist id="list-fit">
+          <option value="오버핏"></option><option value="레귤러핏"></option>
+          <option value="슬림핏"></option><option value="와이드"></option>
+        </datalist>
+      </div>
+
+      <div class="field">
+        <label for="add-season">계절</label>
+        <input type="text" id="add-season" maxlength="30" list="list-season" placeholder="예) 겨울 (선택)" />
+        <datalist id="list-season">
+          <option value="봄"></option><option value="여름"></option>
+          <option value="가을"></option><option value="겨울"></option>
+          <option value="사계절"></option>
+        </datalist>
+      </div>
     </div>
 
     <div class="field">
-      <label for="add-detail">소재 · 핏</label>
-      <input type="text" id="add-detail" maxlength="80" placeholder="예) 도톰한 기모 소재의 오버핏 (선택)" />
+      <label for="add-detail">설명 · 메모</label>
+      <input type="text" id="add-detail" maxlength="80" placeholder="예) 도톰해서 한겨울에도 따뜻해요 (선택)" />
       <p class="field__hint">추천할 때 함께 쓰여요.</p>
     </div>
 
