@@ -364,6 +364,16 @@
       },
       tryOn: function (id) {
         return request('/api/coordinations/' + encodeURIComponent(id) + '/tryon', { method: 'POST' });
+      },
+      /**
+       * 착용 사진만 지운다. 코디 기록과 옷은 남는다.
+       *
+       * 백엔드가 만드는 중이라 아직 없을 수 있다. 여기서 삼키지 않고 그대로
+       * 던진다 — 화면이 isNotDeployed() 로 "아직 없음"과 "장애"를 구분해서
+       * 다른 문구를 보여 줘야 하기 때문이다.
+       */
+      removeTryOn: function (id) {
+        return request('/api/coordinations/' + encodeURIComponent(id) + '/tryon', { method: 'DELETE' });
       }
     },
 

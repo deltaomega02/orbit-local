@@ -233,15 +233,19 @@
    * 입어본 사진이 있으면 그것이 주인공이고, 없으면 구성 옷 사진을
    * 가로로 이어 붙인 스트립으로 대신한다.
    */
-  function lookFrameHtml(c) {
-    if (c.tryOnImageUrl) {
-      return '<span class="frame frame--look">' + imgTag(c.tryOnImageUrl, '입어본 모습') + '</span>';
-    }
+  function tryOnFrameHtml(c, extra) {
+    return '<span class="frame frame--look"' + (extra || '') + '>' +
+      imgTag(c.tryOnImageUrl, 'AI 가 만든 입어본 모습') + '</span>';
+  }
+
+  /** 원본 옷 사진 스트립. 가상 착용 결과가 있어도 이 그림은 사라지지 않아야 한다. */
+  function itemsFrameHtml(c, extra) {
     var items = sortedItems(c).slice(0, 3);
     if (!items.length) {
-      return '<span class="frame frame--look"><span class="frame__initial" aria-hidden="true">No Photo</span></span>';
+      return '<span class="frame frame--look"' + (extra || '') +
+        '><span class="frame__initial" aria-hidden="true">No Photo</span></span>';
     }
-    return '<span class="frame frame--look"><span class="strip">' +
+    return '<span class="frame frame--look"' + (extra || '') + '><span class="strip">' +
       items.map(function (it) {
         var cat = catOf(it.mainCategory);
         return '<span class="strip__cell">' +
@@ -252,8 +256,20 @@
     '</span></span>';
   }
 
-  function aiPillHtml() {
-    return '<span class="pill"><span class="pill__dot" aria-hidden="true"></span>AI 추천</span>';
+  function lookFrameHtml(c) {
+    return c.tryOnImageUrl ? tryOnFrameHtml(c) : itemsFrameHtml(c);
+  }
+
+  /**
+   * 사진 위 pill.
+   *
+   * 입어본 사진은 AI 가 만들어 낸 그림이지 사용자가 실제로 입은 모습이 아니다.
+   * 아무 표시가 없으면 기록에서 훑을 때 "그날 그렇게 입었다"로 읽힌다.
+   * 그래서 생성 이미지가 주인공인 자리에서는 pill 이 그 사실을 먼저 말한다.
+   */
+  function aiPillHtml(c) {
+    return '<span class="pill" data-ai-pill><span class="pill__dot" aria-hidden="true"></span>' +
+      (c && c.tryOnImageUrl ? 'AI 생성 이미지' : 'AI 추천') + '</span>';
   }
 
   function favBtnHtml(c) {
@@ -268,13 +284,13 @@
     var title = c.title || '오늘의 코디';
     return '<article class="look" data-id="' + esc(c.id) + '">' +
       '<div class="look__head">' +
-        '<span class="indexlabel">' + esc(lookNo(c)) + '</span>' +
+        '<span class="indexlabel">' + esc(lookLabel(c)) + '</span>' +
         '<span class="num">' + esc(stampOf(c.createdAt)) + '</span>' +
       '</div>' +
       '<div class="look__figure">' +
         '<button class="look__open" type="button" data-coord-open="' + esc(c.id) + '" ' +
                 'data-coord-title="' + esc(title) + '" aria-label="' + esc(title) + ' 자세히 보기">' +
-          lookFrameHtml(c) + aiPillHtml() +
+          lookFrameHtml(c) + aiPillHtml(c) +
         '</button>' +
         favBtnHtml(c) +
       '</div>' +
@@ -296,7 +312,7 @@
     return '<button class="minilook" type="button" data-coord-open="' + esc(c.id) + '" ' +
             'data-coord-title="' + esc(title) + '">' +
       lookFrameHtml(c) +
-      '<span class="indexlabel minilook__no">' + esc(lookNo(c)) + '</span>' +
+      '<span class="indexlabel minilook__no">' + esc(lookLabel(c)) + '</span>' +
       '<span class="minilook__title">' + esc(title) + '</span>' +
       '<span class="num minilook__date">' + esc(dateOf(c.createdAt)) + '</span>' +
     '</button>';
@@ -1110,6 +1126,12 @@
         '<section class="section">' +
           '<p class="sectionlabel">Details</p>' +
           '<ul class="specrows">' + rows.map(specRowHtml).join('') + '</ul>' +
+          // 이 앱은 옷 정보를 AI 가 대신 채운다. 실제로 바지를 "민소매 티셔츠 · 상의"
+          // 로 분류한 적이 있다. 자동 입력을 쓰면서 고칠 길이 없으면, 잘못 읽힌 옷은
+          // 지우고 다시 올리는 수밖에 없다. 저장 뒤에도 고칠 수 있어야 한다.
+          '<button class="btn btn--ghost btn--block item__edit" type="button" data-action="edit-item">' +
+            icon('pencil', 'ico--sm') + '<span class="btn__text">정보 수정</span>' +
+          '</button>' +
         '</section>' +
 
         '<section class="section">' +
@@ -1183,12 +1205,18 @@
   });
 
   $('#item-detail').addEventListener('click', function (e) {
+    if (e.target.closest('[data-action="edit-item"]')) {
+      if (state.item.data) openEditSheet(state.item.data);
+      return;
+    }
+
     var del = e.target.closest('[data-action="delete-item"]');
     if (del) {
       var done = busy(del, '삭제 중…');
       api.clothes.remove(state.item.id).then(function () {
         state.closet.loaded = false;
         state.home.loaded = false;
+        state.stats.loaded = false;
         toast('옷장에서 지웠어요.');
         back();
       }).catch(function (err) {
@@ -1396,7 +1424,8 @@
     var cached = findCoord(id);
 
     if (state.coord.id !== String(id)) {
-      state.coord = { id: String(id), data: cached || null };
+      // 다른 코디로 넘어가면 사진 전환은 기본값(입어본 모습)으로 돌아간다.
+      state.coord = { id: String(id), data: cached || null, media: 'tryon' };
       host.innerHTML = '';
     }
     if (state.coord.data) renderCoord();
@@ -1460,12 +1489,85 @@
         '</div>' +
       '</div>' +
 
+      // 생성 결과가 남으로 나오는 일이 있는데, 지우는 길이 룩 전체 삭제뿐이었다.
+      // 착용 사진 하나만 되돌릴 수 있어야 기록을 버리지 않고 다시 시도한다.
+      (hasResult
+        ? '<button class="btn btn--quiet btn--danger-text btn--block" type="button" data-action="ask-del-tryon">' +
+            icon('trash', 'ico--sm') + '<span class="btn__text">이 착용 사진만 지우기</span>' +
+          '</button>' +
+          '<div class="confirm" role="alertdialog" aria-label="착용 사진 삭제 확인" data-del-tryon hidden>' +
+            '<p class="confirm__q">이 착용 사진만 지울까요? 코디 기록과 옷은 그대로 남아요.</p>' +
+            '<div class="confirm__actions">' +
+              '<button class="btn btn--ghost btn--tiny" type="button" data-action="cancel-del-tryon">취소</button>' +
+              '<button class="btn btn--danger btn--tiny" type="button" data-action="delete-tryon">' +
+                '<span class="btn__spinner" aria-hidden="true"></span>' +
+                '<span class="btn__text">사진만 지우기</span>' +
+              '</button>' +
+            '</div>' +
+          '</div>'
+        : '') +
+
       '<div class="progress" hidden>' +
         '<div class="progress__track"><div class="progress__fill"></div></div>' +
         '<p class="progress__label" role="status">준비하는 중…</p>' +
       '</div>' +
       '<div class="note note--error tryon__error" role="alert" hidden></div>' +
     '</div>';
+  }
+
+  /* ---------------- 코디 상세의 사진 자리 ---------------- */
+  var MEDIA_NOTE = {
+    tryon: 'AI 가 만든 이미지예요. 실제로 입은 모습이 아닙니다.',
+    items: '등록한 옷 사진 그대로예요.'
+  };
+
+  /**
+   * 가상 착용 결과가 생기면 홈·기록·상세의 썸네일이 전부 생성 이미지로 바뀌고,
+   * 내가 올린 옷 사진을 다시 볼 방법이 없었다. 상세에서만은 둘을 오갈 수 있게 한다.
+   */
+  function coordMediaHtml(c) {
+    var hasTryOn = !!c.tryOnImageUrl;
+    var which = hasTryOn ? (state.coord.media || 'tryon') : 'items';
+
+    var panes = (hasTryOn ? tryOnFrameHtml(c, ' data-media-pane="tryon"' + (which === 'tryon' ? '' : ' hidden')) : '') +
+      itemsFrameHtml(c, ' data-media-pane="items"' + (which === 'items' ? '' : ' hidden'));
+
+    return '<div class="detail__media">' + panes +
+        '<span class="pill" data-ai-pill><span class="pill__dot" aria-hidden="true"></span>' +
+          (which === 'tryon' ? 'AI 생성 이미지' : 'AI 추천') +
+        '</span>' +
+      '</div>' +
+      (hasTryOn
+        ? '<div class="mediaswitch">' +
+            '<div class="segmented" role="group" aria-label="사진 종류">' +
+              '<button class="segmented__item' + (which === 'tryon' ? ' is-active' : '') + '" type="button" ' +
+                'data-media-tab="tryon" aria-pressed="' + (which === 'tryon') + '">입어본 모습</button>' +
+              '<button class="segmented__item' + (which === 'items' ? ' is-active' : '') + '" type="button" ' +
+                'data-media-tab="items" aria-pressed="' + (which === 'items') + '">내 옷 사진</button>' +
+            '</div>' +
+            '<p class="medianote" data-media-note>' + esc(MEDIA_NOTE[which]) + '</p>' +
+          '</div>'
+        : '');
+  }
+
+  function setCoordMedia(which) {
+    state.coord.media = which;
+    var host = $('#coord-detail');
+    $$('[data-media-pane]', host).forEach(function (p) {
+      show(p, p.dataset.mediaPane === which);
+    });
+    $$('[data-media-tab]', host).forEach(function (b) {
+      var on = b.dataset.mediaTab === which;
+      b.classList.toggle('is-active', on);
+      b.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+    var pill = $('[data-ai-pill]', host);
+    if (pill) {
+      pill.innerHTML = '<span class="pill__dot" aria-hidden="true"></span>' +
+        (which === 'tryon' ? 'AI 생성 이미지' : 'AI 추천');
+    }
+    var note = $('[data-media-note]', host);
+    if (note) note.textContent = MEDIA_NOTE[which] || '';
   }
 
   function renderCoord() {
@@ -1486,11 +1588,11 @@
     $('#coord-detail').innerHTML =
       '<div class="detail">' +
         '<div class="look__head">' +
-          '<span class="indexlabel">' + esc(lookNo(c)) + '</span>' +
+          '<span class="indexlabel">' + esc(lookLabel(c)) + '</span>' +
           '<span class="num">' + esc(stampOf(c.createdAt)) + '</span>' +
         '</div>' +
 
-        '<div class="detail__media">' + lookFrameHtml(c) + aiPillHtml() + '</div>' +
+        coordMediaHtml(c) +
 
         tryOnBlockHtml(c, items) +
 
@@ -1545,6 +1647,9 @@
   });
 
   $('#coord-detail').addEventListener('click', function (e) {
+    var tab = e.target.closest('[data-media-tab]');
+    if (tab) { setCoordMedia(tab.dataset.mediaTab); return; }
+
     var link = e.target.closest('[data-clothes-id]');
     if (link) { openItem(link.dataset.clothesId, link.dataset.clothesName); return; }
 
@@ -1554,6 +1659,7 @@
       api.coordinations.remove(state.coord.id).then(function () {
         state.history.loaded = false;
         state.home.loaded = false;
+        state.stats.loaded = false;
         toast('코디를 지웠어요.');
         back();
       }).catch(function (err) {
@@ -1579,6 +1685,11 @@
     if (e.target.closest('[data-action="ask-tryon-again"]')) { showTryOnAgain(true); return; }
     if (e.target.closest('[data-action="cancel-tryon-again"]')) { showTryOnAgain(false); return; }
 
+    if (e.target.closest('[data-action="ask-del-tryon"]')) { showDelTryOn(true); return; }
+    if (e.target.closest('[data-action="cancel-del-tryon"]')) { showDelTryOn(false); return; }
+    var delTryOn = e.target.closest('[data-action="delete-tryon"]');
+    if (delTryOn) { runDeleteTryOn(delTryOn); return; }
+
     var tryOnBtn = e.target.closest('[data-action="tryon"]');
     if (tryOnBtn) runTryOn(tryOnBtn);
   });
@@ -1593,6 +1704,50 @@
     show(ask, !on);
     var focusTarget = on ? $('[data-action="cancel-tryon-again"]', host) : ask;
     if (focusTarget) focusTarget.focus();
+    if (on) scrollIntoViewSafely(box);
+  }
+
+  function showDelTryOn(on) {
+    var host = $('[data-tryon]', $('#coord-detail'));
+    if (!host) return;
+    var box = $('[data-del-tryon]', host);
+    var ask = $('[data-action="ask-del-tryon"]', host);
+    show(box, on);
+    show(ask, !on);
+    var focusTarget = on ? $('[data-action="cancel-del-tryon"]', host) : ask;
+    if (focusTarget) focusTarget.focus();
+    if (on) scrollIntoViewSafely(box);
+  }
+
+  /**
+   * 착용 사진만 지운다.
+   *
+   * 서버의 `DELETE /api/coordinations/{id}/tryon` 은 아직 만드는 중이다.
+   * 없을 때(404·405)를 오류로 토해 내면 사용자는 앱이 고장난 줄 아니까,
+   * "아직 안 열린 기능" 으로 구분해서 지금 할 수 있는 다른 길을 함께 말해 준다.
+   */
+  function runDeleteTryOn(btn) {
+    var host = $('[data-tryon]', $('#coord-detail'));
+    var errEl = $('.tryon__error', host);
+    var done = busy(btn, '지우는 중…');
+    show(errEl, false);
+
+    api.coordinations.removeTryOn(state.coord.id).then(function () {
+      if (state.coord.data) state.coord.data.tryOnImageUrl = null;
+      var pooled = findCoord(state.coord.id);
+      if (pooled) pooled.tryOnImageUrl = null;
+      state.home.loaded = false;
+      state.history.loaded = false;
+      state.coord.media = 'tryon';   // 다음에 결과가 생기면 다시 그것부터 보여 준다
+      renderCoord();
+      toast('착용 사진을 지웠어요. 옷 사진은 그대로예요.');
+    }).catch(function (err) {
+      done();
+      if (isExpired(err)) return;
+      setNote(errEl, api.isNotDeployed(err)
+        ? '이 사진만 지우는 기능은 아직 준비 중이에요. 지금은 ‘다시 만들기’ 로 새 이미지를 만들 수 있어요.'
+        : humanError(err));
+    });
   }
 
   function runTryOn(btn) {
@@ -1721,9 +1876,41 @@
   }
 
   function openAddSheet() {
+    state.editItemId = null;
     resetAddForm();
+    applySheetMode();
     openSheet(addSheet);
     setTimeout(function () { $('#add-image-label').focus(); }, 40);
+  }
+
+  /**
+   * 옷 정보 수정.
+   *
+   * 등록 시트를 그대로 쓴다. 같은 값을 두 가지 화면으로 배우게 할 이유가 없고,
+   * 사진을 고르면 자동으로 채워지는 그 폼이 곧 "AI 가 채운 것을 고치는 폼"이다.
+   * 사진 자체는 PATCH 로 바꿀 수 없으므로 사진 고르는 자리만 접는다.
+   */
+  function openEditSheet(item) {
+    state.editItemId = item.id;
+    resetAddForm();
+    $('#add-name').value = item.name || '';
+    $('#add-color').value = item.color || '';
+    $('#add-detail').value = item.detail || '';
+    setCategory(CATEGORY[item.mainCategory] ? item.mainCategory : 'TOP');
+    applySheetMode();
+    openSheet(addSheet);
+    setTimeout(function () { $('#add-name').focus(); $('#add-name').select(); }, 40);
+  }
+
+  function applySheetMode() {
+    var editing = state.editItemId != null;
+    $('#add-sheet-kicker').textContent = editing ? 'Edit Item' : 'New Item';
+    $('#add-sheet-title').textContent = editing ? '옷 정보 수정' : '옷 추가';
+    $('#add-sheet-desc').textContent = editing
+      ? 'AI 가 잘못 읽은 이름·카테고리·색을 여기서 고칠 수 있어요. 사진은 바뀌지 않아요.'
+      : '사진을 고르면 이름·카테고리·색을 자동으로 채워 드려요. 사진 없이 직접 입력해도 괜찮아요.';
+    show($('#add-picker'), !editing);
+    $('.btn__text', $('#btn-add-submit')).textContent = editing ? '수정 저장' : '저장';
   }
 
   function closeAddSheet() {
@@ -1756,7 +1943,8 @@
     btn.disabled = !!on;
     if (on) btn.setAttribute('aria-busy', 'true');
     else btn.removeAttribute('aria-busy');
-    $('.btn__text', btn).textContent = on ? '사진 읽는 중…' : '저장';
+    $('.btn__text', btn).textContent = on ? '사진 읽는 중…'
+      : (state.editItemId != null ? '수정 저장' : '저장');
   }
 
   /** 분석 결과 안내. 시트 안에서는 토스트 대신 인라인 노트를 쓴다. */
@@ -1795,6 +1983,7 @@
   // ESC·✕ 로 닫힐 때도 뒷정리는 한 곳에서 한다.
   addSheet.addEventListener('close', function () {
     if (state.analyzeAbort) { state.analyzeAbort.abort(); state.analyzeAbort = null; }
+    state.editItemId = null;
     relocateToasts(null);
   });
   guideSheet.addEventListener('close', function () { relocateToasts(null); });
@@ -1901,6 +2090,39 @@
     }
 
     var done = busy($('#btn-add-submit'), '저장 중…');
+
+    if (state.editItemId != null) {
+      var editingId = state.editItemId;
+      api.clothes.update(editingId, {
+        name: name,
+        mainCategory: currentCategory(),
+        // PATCH 는 null 이 "변경 없음" 이므로, 비우려면 빈 문자열을 보내야 한다.
+        color: color,
+        detail: detail
+      }).then(function (updated) {
+        closeAddSheet();
+        state.item.data = updated;
+        state.closet.loaded = false;
+        state.home.loaded = false;
+        state.stats.loaded = false;
+        if (String(state.item.id) === String(editingId)) {
+          $('#topbar-title').textContent = updated.name || '옷';
+          renderItem();
+        }
+        toast('‘' + updated.name + '’ 정보를 고쳤어요.');
+        // 서버가 아직 detail 을 받지 않는다면 조용히 사라지게 두지 않는다.
+        if ((updated.detail || '') !== detail) {
+          toast('소재 · 핏은 아직 저장되지 않아요. 나머지는 저장했어요.', 'error');
+        }
+      }).catch(function (err) {
+        if (isExpired(err)) return;
+        setNote($('#add-error'), api.isNotDeployed(err)
+          ? '지금은 수정할 수 없어요. 잠시 후 다시 시도해 주세요.'
+          : humanError(err));
+      }).finally(done);
+      return;
+    }
+
     api.clothes.create({
       image: state.addImage,
       name: name,

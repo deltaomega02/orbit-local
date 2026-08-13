@@ -795,8 +795,16 @@ input:focus-visible, textarea:focus-visible { outline: 2px solid var(--ink); out
 .confirm--quiet { background: var(--paper-sunk); }
 .confirm--quiet .confirm__q { color: var(--ink); font-weight: 400; }
 
+/* 가상 착용 결과와 원본 옷 사진 사이의 전환.
+   결과가 생기면 썸네일이 전부 생성 이미지로 바뀌어 내 옷 사진을 다시 볼 길이
+   없었다. 상세에서만은 두 장을 오갈 수 있어야 한다. */
+.mediaswitch { display: grid; gap: var(--s3); margin-top: var(--s4); }
+.medianote { font-size: 13px; color: var(--ink-soft); text-align: center; }
+
 /* 진행 표시 — 액센트는 선으로만 쓴다 */
-.tryon { margin-top: var(--s4); display: grid; gap: var(--s3); }
+.tryon { margin-top: var(--s5); display: grid; gap: var(--s3); }
+/* 옷 상세의 '정보 수정'. 목록 바로 아래에 붙으면 마지막 줄처럼 보인다. */
+.item__edit { margin-top: var(--s4); }
 .tryon__hint { font-size: 13px; color: var(--ink-soft); text-align: center; }
 .progress { display: grid; gap: var(--s3); }
 .progress__track { height: 2px; background: var(--rule); border-radius: var(--r-pill); overflow: hidden; }
