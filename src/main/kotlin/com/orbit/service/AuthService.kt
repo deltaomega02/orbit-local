@@ -26,7 +26,31 @@ class AuthService(
     private val userRepository: UserRepository,
     private val passwordEncoder: PasswordEncoder,
     private val tokenProvider: JwtTokenProvider,
+    private val ownerAccountService: OwnerAccountService,
 ) {
+
+    /**
+     * 자격증명 없이 **이 앱의 주인**([OwnerAccountService])에게 토큰을 발급한다.
+     * `POST /api/auth/session` 이 부른다.
+     *
+     * ## 이것은 인증을 여는 결정이다
+     *
+     * 이 메서드는 "요청한 사람이 누구인지 확인하지 않고 토큰을 준다". 서버에 닿을 수
+     * 있는 쪽은 전부 주인의 옷장을 읽고 쓸 수 있다는 뜻이다. 그래도 괜찮다고 보는
+     * 전제는 딱 하나 — **서버가 이 기기 밖에서 보이지 않는다**는 것이다. 그래서
+     * `server.address` 를 루프백(127.0.0.1)으로 못박아 두었다. 그 설정이 풀리는
+     * 순간 이 메서드는 같은 네트워크 아무에게나 열린 문이 된다.
+     *
+     * 루프백 안에서도 공짜는 아니다. **같은 기기의 다른 프로세스**(브라우저 확장,
+     * 다른 앱, 이 계정으로 도는 스크립트)는 여전히 이 엔드포인트를 부를 수 있고,
+     * 부르면 주인의 토큰을 받는다. 비밀번호를 물었을 때와 비교해 실제로 잃는 것이
+     * 정확히 그 차이다. 옷 사진과 코디 기록이 담긴 1인용 로컬 앱에서, 켤 때마다
+     * 로그인 화면이 주는 마찰보다 이 위험이 작다고 판단했다. 여러 사람이 쓰거나
+     * 기기 밖에서 접근하게 되면 이 판단은 무효다 — 그때는 아래 [login] 을 화면에
+     * 다시 붙이면 된다. 그래서 지우지 않고 남겨 두었다.
+     */
+    @Transactional
+    fun startOwnerSession(): IssuedTokens = issue(ownerAccountService.resolveOrCreate())
 
     /**
      * 가입. 비밀번호는 이 메서드를 통과하는 순간 해시가 되고, 평문은 어디에도 남지 않는다.
@@ -59,6 +83,11 @@ class AuthService(
         if (user == null || !passwordEncoder.matches(rawPassword, user.passwordHash)) {
             throw InvalidCredentialsException()
         }
+        return issue(user)
+    }
+
+    /** 액세스 + 리프레시 한 쌍. 로그인과 자동 세션이 같은 코드를 지나게 한다. */
+    private fun issue(user: User): IssuedTokens {
         val id = requireNotNull(user.id)
         return IssuedTokens(
             accessToken = tokenProvider.issueAccessToken(id, user.email),

@@ -53,6 +53,34 @@ class AuthController(
     private val authService: AuthService,
 ) {
 
+    /**
+     * 자동 세션. **본문도 자격증명도 없다.** 부르면 이 앱의 주인
+     * ([com.orbit.service.OwnerAccountService]) 토큰이 나온다.
+     *
+     * 화면은 앱을 열 때 이것 하나만 부르고 곧바로 옷장으로 간다. 한 사람이 자기
+     * 노트북에서만 쓰는 앱에서 로그인 화면은 "본인임을 증명하는 절차"가 아니라
+     * 매번 지나야 하는 문턱일 뿐이기 때문이다.
+     *
+     * **그 대가와 전제는 [com.orbit.service.AuthService.startOwnerSession] 주석에
+     * 적어 두었다.** 요약하면 서버가 루프백에만 뜨는 것이 이 엔드포인트의 안전
+     * 장치이고, 같은 기기의 다른 프로세스까지 막지는 못한다.
+     *
+     * 응답 모양은 [login] 과 같다. 클라이언트가 토큰을 다루는 코드를 하나로 유지할
+     * 수 있고, 나중에 로그인을 되살릴 때 화면이 바꿀 것이 "무엇을 부르는가" 하나뿐이다.
+     */
+    @PostMapping("/session")
+    fun session(): TokenResponse = TokenResponse.from(authService.startOwnerSession())
+
+    /*
+     * 아래 signup / login / refresh 는 **현재 화면에서 쓰지 않는다.** 지우지 않은
+     * 이유는 두 가지다.
+     *  1) 소유권 격리와 `/media` 보호가 전부 이 토큰 위에 서 있고, 그 동작을
+     *     고정하는 테스트가 이 경로들로 진짜 토큰을 받아서 쓴다. 경로를 지우면
+     *     검증이 함께 사라진다.
+     *  2) 여러 사람이 쓰게 되는 날 되살릴 경로다. 지웠다 다시 만드는 것보다
+     *     남겨 두고 화면에서 부르지 않는 편이 되돌리기 쉽다.
+     */
+
     @PostMapping("/signup")
     fun signUp(@Valid @RequestBody request: SignUpRequest): ResponseEntity<UserResponse> {
         val user = authService.signUp(request.email, request.password, request.displayName)

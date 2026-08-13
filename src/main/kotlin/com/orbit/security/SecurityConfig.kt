@@ -41,10 +41,25 @@ class SecurityConfig(
             // 사용자는 "키가 틀렸다" 대신 "로그인이 필요하다"를 보게 되고, 진짜 원인은
             // 사라진다.
             it.dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
-                .requestMatchers(HttpMethod.POST, "/api/auth/signup", "/api/auth/login", "/api/auth/refresh")
+                /*
+                 * `/api/auth/session` 은 **자격증명 없이 토큰을 내주는** 경로다.
+                 * 인증을 요구하면 토큰을 받으러 온 요청이 토큰이 없다는 이유로 막히므로
+                 * 열려 있을 수밖에 없고, 그래서 이 경로가 곧 이 앱의 인증 경계다.
+                 * 무엇을 근거로 열어 두는지는
+                 * [com.orbit.service.AuthService.startOwnerSession] 에 적어 두었다
+                 * (요약: 서버가 루프백에만 뜬다는 전제. application.yml 의
+                 * `server.address` 가 그 전제를 지킨다).
+                 */
+                .requestMatchers(
+                    HttpMethod.POST,
+                    "/api/auth/session",
+                    "/api/auth/signup",
+                    "/api/auth/login",
+                    "/api/auth/refresh",
+                )
                 .permitAll()
-                // 화면 껍데기(HTML/CSS/JS)는 인증 없이 내려준다. 로그인 화면을 보려면
-                // 먼저 화면이 떠야 하는데, 여기까지 막으면 로그인 자체가 불가능해진다.
+                // 화면 껍데기(HTML/CSS/JS)는 인증 없이 내려준다. 화면이 먼저 떠야
+                // 자동 세션을 부를 수 있는데, 여기까지 막으면 그 첫 호출이 불가능해진다.
                 // 사용자 데이터는 전부 /api/** 와 /media/** 뒤에 있으므로 이걸 열어도
                 // 노출되는 것은 없다. 경로를 하나씩 나열해 새 경로가 실수로 열리지 않게 한다.
                 .requestMatchers(HttpMethod.GET, "/", "/index.html", "/app.js", "/api.js", "/style.css", "/favicon.ico")

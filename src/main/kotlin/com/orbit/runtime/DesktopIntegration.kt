@@ -55,7 +55,11 @@ class DesktopIntegration(
 
     override fun onApplicationEvent(event: ApplicationReadyEvent) {
         val port = (context as? WebServerApplicationContext)?.webServer?.port ?: return
-        val url = "http://localhost:$port"
+        // `localhost` 가 아니라 127.0.0.1 을 쓴다. 서버는 `server.address` 로 IPv4
+        // 루프백에만 바인딩돼 있는데 `localhost` 는 기기에 따라 ::1(IPv6) 로 먼저
+        // 풀린다. 브라우저가 대개 IPv4 로 다시 시도해 주긴 하지만, 앱을 켰을 때 첫
+        // 화면이 뜨는 일을 그 재시도에 맡길 이유는 없다.
+        val url = "http://127.0.0.1:$port"
 
         SingleInstance.publishPort(port)
         // 정상 종료든 강제 종료든 포트 파일이 남아 있으면 다음 실행이 헛다리를 짚는다.

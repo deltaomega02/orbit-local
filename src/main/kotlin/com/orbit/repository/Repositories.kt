@@ -69,6 +69,15 @@ interface ClothesRepository : JpaRepository<Clothes, Long> {
      */
     fun existsByOwnerIdAndImagePath(ownerId: Long, imagePath: String): Boolean
 
+    /**
+     * 계정 이어받기 판단용([com.orbit.service.OwnerAccountService]).
+     *
+     * **여기도 `deletedAt` 을 보지 않는다.** 묻는 것이 "지금 옷장에 몇 벌 있는가"가
+     * 아니라 "이 계정을 실제로 썼는가"이기 때문이다. 옷을 전부 치운 계정도 쓴
+     * 계정이고, 갓 만들어진 빈 계정과는 다르게 취급해야 한다.
+     */
+    fun countByOwnerId(ownerId: Long): Long
+
     /** 통계용. 카테고리별 개수를 한 쿼리로 센다 — 카테고리마다 따로 세면 3번 돈다. */
     @Query(
         """
@@ -182,6 +191,9 @@ interface CoordinationRepository : JpaRepository<Coordination, Long> {
         """,
     )
     fun findByIdAndOwnerIdWithItems(@Param("id") id: Long, @Param("ownerId") ownerId: Long): Coordination?
+
+    /** 계정 이어받기 판단용([com.orbit.service.OwnerAccountService]). 이 계정이 쌓은 코디 수. */
+    fun countByOwnerId(ownerId: Long): Long
 
     /*
      * ── 기록 목록: 컬렉션 fetch join 과 페이지네이션을 어떻게 같이 쓰는가 ──
