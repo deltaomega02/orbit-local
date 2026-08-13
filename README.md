@@ -40,6 +40,52 @@ JWT 시크릿은 `ORBIT_JWT_SECRET` 환경변수로 주입합니다. 설정하�
 ORBIT_JWT_SECRET='...32바이트 이상...' ./gradlew bootRun
 ```
 
+**설치본(Windows exe)에서는 다릅니다.** 위 개발용 기본값을 쓰지 않고, 첫 실행에 기기마다 다른 시크릿을 만들어 `%LOCALAPPDATA%\Orbit\jwt.key` 에 두고 그 뒤로 재사용합니다(`OrbitEnvironmentPostProcessor.installDesktopJwtSecret`). 받는 사람에게 "환경변수를 설정하세요"라고 할 수는 없고, 그렇다고 모든 설치본이 저장소에 적힌 같은 값을 쓰는 것은 시크릿이 없는 것과 크게 다르지 않기 때문입니다. `ORBIT_JWT_SECRET` 을 직접 준 경우에는 그 값을 존중합니다.
+
+## Windows 배포본 만들기
+
+받는 사람은 개발자가 아니고 JDK도 없습니다. 그래서 **자바 런타임을 통째로 안고 나가는 실행 파일**로 포장합니다. `jpackage` 는 **크로스 빌드를 하지 못하므로**(macOS에서 Windows exe를 만들 수 없습니다) GitHub Actions의 `windows-latest` 러너에서 만듭니다.
+
+```bash
+gh workflow run "Windows パッケージ (jpackage)" --ref main -f version=1.0.0
+gh run watch
+```
+
+워크플로 파일은 `.github/workflows/windows-package.yml` 입니다. `workflow_dispatch` 로 손으로 돌리거나 `v*` 태그를 밀면 돕니다. **`workflow_dispatch` 는 워크플로 파일이 기본 브랜치에 올라가 있어야 동작합니다** — 브랜치에만 있으면 목록에 뜨지 않습니다.
+
+버전은 **첫 자리를 0으로 두지 않습니다**. jpackage가 이 값을 OS의 버전 규격으로 그대로 옮기는데 거기서 선행 0은 유효하지 않습니다(macOS는 즉시 거부하고, Windows MSI도 ProductVersion 규칙이 따로 있습니다). 코드의 `version = 0.1.0` 과 다른 것은 그래서이고, 이쪽은 **받는 사람에게 건네는 물건의 번호**입니다.
+
+나오는 것은 아티팩트 `orbit-windows-<버전>` 안에 세 가지입니다.
+
+| 파일 | 무엇 |
+|---|---|
+| `Orbit-<버전>-windows-portable.zip` | **주 배포 형태.** 압축을 풀고 `Orbit.exe` 를 더블클릭하면 끝. 관리자 권한 불필요 |
+| `Orbit-<버전>.msi` | 설치형. 러너에 WiX 3이 있을 때만 만들어집니다. 없으면 이것만 빠지고 zip은 그대로 나옵니다 |
+| `TESTING-ko.md` | 넘기기 전에 Windows에서 확인할 항목. 배포자용 |
+
+zip 안에는 일본어 안내문 `はじめにお読みください.txt` 가 함께 들어갑니다(원본은 `packaging/windows/`, CI에서 UTF-8 BOM + CRLF로 변환합니다 — 메모장이 인코딩을 잘못 짚으면 안내문 전체가 깨진 글자가 되고, LF만 있으면 옛 메모장에서 한 줄로 뭉칩니다). **SmartScreen 경고를 통과하는 법**이 그 안내문의 핵심입니다 — 서명되지 않은 exe라 첫 실행에 "Windows によって PC が保護されました"가 뜨고, 「詳細情報」→「実行」을 모르면 대부분 여기서 포기합니다.
+
+**API 키는 굽지 않습니다.** 이 저장소는 public이라 CI 아티팩트도 공개됩니다. Gemini 키는 사용자가 앱 화면(その他 → AI連携)에서 직접 넣습니다.
+
+포장된 앱이 개발 실행과 다르게 하는 일:
+
+- 콘솔 창이 없습니다(`--win-console` 을 주지 않습니다). 대신 로그를 `%LOCALAPPDATA%\Orbit\logs\orbit.log` 로 보냅니다 — 화면에 아무것도 안 나오는 앱에서 그 파일이 유일한 단서입니다
+- 8080이 막혀 있으면 **빈 포트를 찾아** 쓰고 브라우저를 그 포트로 엽니다(`FreePort`)
+- **알림 영역 아이콘이 종료 수단입니다**(`DesktopIntegration`). 브라우저 탭을 닫아도 서버는 살아 있고, 터미널을 쓰지 않는 사용자에게 작업 관리자를 열라고 하는 것은 답이 아닙니다. 기동 직후 풍선 알림으로 그 자리를 한 번 짚어 줍니다
+- 두 번째 실행은 죽지 않고 **이미 떠 있는 쪽 화면을 열어 줍니다**(`SingleInstance`)
+
+이 갈래는 `jpackage.app-path` 시스템 프로퍼티로 판단합니다(`DesktopRuntime.launchedFromPackagedApp`). **`./gradlew bootRun` 은 예전 그대로**라 개발 중에 트레이 아이콘이 생기거나 브라우저가 튀어나오지 않습니다.
+
+확인용 환경변수 — 사용자에게 안내할 내용은 아닙니다.
+
+| 변수 | 무엇 |
+|---|---|
+| `ORBIT_PORT` | 먼저 시도할 포트 (기본 8080) |
+| `ORBIT_OPEN_BROWSER=false` | 브라우저 자동 실행만 끕니다 |
+| `ORBIT_HOME` | 데이터 폴더를 옮깁니다. 깨끗한 첫 실행을 재현할 때 |
+
+Windows 실행 파일 아이콘은 `packaging/windows/orbit.ico` 이고 `packaging/icon/OrbitIcon.java` 가 만듭니다(`java packaging/icon/OrbitIcon.java packaging/windows/orbit.ico`). 트레이 아이콘과 같은 도형을 같은 규칙으로 그리므로 작업 표시줄과 알림 영역의 그림이 어긋나지 않습니다.
+
 ## 데이터가 어디에 있나
 
 설치형 앱이라 사용자 데이터는 프로젝트 폴더가 아니라 **OS가 정해 둔 사용자 데이터 폴더**에 둡니다(`OrbitPaths`). 앱이 놓인 자리는 사용자가 통째로 지우거나 옮기는 곳이고, 거기에 사진과 DB가 있으면 앱을 지우는 순간 옷장도 같이 사라지기 때문입니다.
