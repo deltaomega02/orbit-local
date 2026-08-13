@@ -12,6 +12,8 @@ import com.orbit.domain.Clothes
 import com.orbit.domain.Coordination
 import com.orbit.domain.CoordinationLimits
 import com.orbit.domain.MainCategory
+import com.orbit.media.ImageNormalizer
+import com.orbit.media.ImageType
 import com.orbit.media.MediaStorage
 import com.orbit.repository.ClothesRepository
 import com.orbit.repository.CoordinationRepository
@@ -58,6 +60,7 @@ class OutfitAiService(
     private val userRepository: UserRepository,
     private val coordinationService: CoordinationService,
     private val mediaStorage: MediaStorage,
+    private val imageNormalizer: ImageNormalizer,
     private val analyzerProvider: ObjectProvider<ClothingAnalyzer>,
     private val recommenderProvider: ObjectProvider<OutfitRecommender>,
     private val tryOnProvider: ObjectProvider<TryOnImageGenerator>,
@@ -219,7 +222,14 @@ class OutfitAiService(
             .mapNotNull { mediaStorage.read(it) }
 
         val generated = generator.generate(bodyPhoto, itemImages)
-        val stored = mediaStorage.store("tryon", generated, null)
+        /*
+         * 결과를 그대로 저장하지 않고 고정 캔버스에 앉힌다. 모델의 출력 크기는
+         * 입력 사진을 따라가므로, 전신 사진을 바꾸면 그날 이후의 기록만 모양이
+         * 달라진다. 목록은 그 둘을 나란히 세워야 하고, 그러면 줄이 맞지 않는다.
+         * 이유는 [MediaProperties.tryonCanvasWidth] 에 적었다.
+         */
+        val canvased = imageNormalizer.fitToTryonCanvas(generated, ImageType.detect(generated) ?: ImageType.JPEG)
+        val stored = mediaStorage.store("tryon", canvased.bytes, canvased.type.mime)
         coordinationRepository.updateTryOnImagePath(coordinationId, ownerId, stored.relativePath)
         return stored.relativePath
     }

@@ -593,9 +593,9 @@ input:focus-visible, textarea:focus-visible { outline: 2px solid var(--ink); out
   box-shadow: var(--frame-inset);
   pointer-events: none;
 }
-.frame--look { aspect-ratio: 3 / 4; }   /* 가상 착용 */
+.frame--look { aspect-ratio: 2 / 3; }   /* 가상 착용 — 서버가 이 비율로 앉혀 보낸다 */
 .frame--item { aspect-ratio: 4 / 5; }   /* 옷 */
-.frame--body { aspect-ratio: 3 / 4; width: 132px; flex: none; }
+.frame--body { aspect-ratio: 2 / 3; width: 132px; flex: none; }
 .frame--pick { aspect-ratio: 4 / 5; width: 108px; flex: none; cursor: pointer; }
 
 .frame > img {
@@ -991,7 +991,7 @@ input:focus-visible, textarea:focus-visible { outline: 2px solid var(--ink); out
   animation: breathe 1.6s ease-in-out infinite;
 }
 .sk--label { height: 12px; width: 96px; border-radius: var(--s1); margin-bottom: var(--s4); }
-.sk--look { aspect-ratio: 3 / 4; margin-bottom: var(--s7); }
+.sk--look { aspect-ratio: 2 / 3; margin-bottom: var(--s7); }
 .sk--item { aspect-ratio: 4 / 5; }
 .sk--row { height: 76px; border-radius: var(--r-card); margin-bottom: var(--s5); }
 
@@ -1392,20 +1392,7 @@ input:focus-visible, textarea:focus-visible { outline: 2px solid var(--ink); out
 }
 
 
-/* 착용 이미지의 세로 비율은 생성 결과에 따라 들쭉날쭉하다(3:4 를 요구하지만
-   모델이 늘 지키지는 않는다). 3:4 칸에 cover 로 채우면 세로로 긴 결과에서
-   위아래가 잘리는데, 그때 가장 먼저 사라지는 것이 얼굴이다. 실제로 655x1600
-   결과에서 머리가 통째로 잘렸다.
-   목록에서는 위를 기준으로 잘라 얼굴을 지키고, 상세에서는 아예 자르지 않는다. */
-.frame--look > img { object-position: center top; }
-
-[data-media-pane="tryon"] {
-  aspect-ratio: auto;
-  background: var(--paper-sunk);
-}
-[data-media-pane="tryon"] > img {
-  position: static;
-  width: 100%;
-  height: auto;
-  object-fit: contain;
-}
+/* 여기에 착용 이미지용 예외가 있었다. 결과 비율이 제각각이라 잘리는 것을 CSS 로
+   막아 보려 했는데, 화면마다 다른 규칙이 생기고 어느 쪽도 온전히 보이지 않았다.
+   지금은 서버가 저장 직전에 모든 결과를 같은 2:3 캔버스에 앉히므로
+   (ImageNormalizer.fitToTryonCanvas) 프레임 규칙 하나면 된다. 예외를 지운다. */

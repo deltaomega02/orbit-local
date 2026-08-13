@@ -2364,8 +2364,14 @@
     $('#add-sheet-kicker').textContent = editing ? 'Edit Item' : 'New Item';
     $('#add-sheet-title').textContent = editing ? 'アイテム情報の編集' : '服を追加';
     $('#add-sheet-desc').textContent = editing
-      ? 'AI が読み間違えた名前・カテゴリー・色をここで直せます。写真は変わりません。'
-      : '写真を選ぶと、名前・カテゴリー・色を自動で入力します。写真なしで直接入力しても大丈夫です。';
+      ? 'AI が読み取った内容をここで直せます。写真は変わりません。'
+      /*
+       * 안내가 실제보다 적게 약속하고 있었다("名前・カテゴリー・色"). 사진 한 장에서
+       * 채워지는 것은 여덟 항목 전부이고(이름·카테고리·색·종류·소재·실루엣·계절·설명),
+       * 그 값들이 그대로 추천의 재료가 된다. 적게 적어 두면 사용자는 나머지를 손으로
+       * 채워야 하는 줄 알고, 비워 두면 추천이 나빠질까 걱정하게 된다.
+       */
+      : '写真を選ぶだけで、名前・カテゴリー・色・種類・素材・シルエット・季節まで自動で入力します。そのまま保存できます。';
     show($('#add-picker'), !editing);
     $('.btn__text', $('#btn-add-submit')).textContent = editing ? '変更を保存' : '保存';
   }
@@ -2518,7 +2524,7 @@
             if (v && !$(f.sel).value) $(f.sel).value = String(v);
           });
           syncSeasonChips();
-          analyzeNotice('写真を読み取って自動入力しました。確認して直してください。', 'ok');
+          analyzeNotice('写真を読み取って、すべての項目を入力しました。このまま保存できます。', 'ok');
         }
       })
       .catch(function (err) {

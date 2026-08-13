@@ -77,6 +77,83 @@ class ImageNormalizer(private val properties: MediaProperties) {
     fun forAiPayload(bytes: ByteArray, type: ImageType): NormalizedImage =
         normalize(bytes, type, properties.aiMaxEdge)
 
+    /**
+     * 가상 착용 결과를 고정 캔버스([MediaProperties.tryonCanvasWidth] ×
+     * [MediaProperties.tryonCanvasHeight])에 앉힌다.
+     *
+     * **자르지 않는다.** 이 사진의 용건은 "이 코디를 입으면 이렇게 된다"이므로
+     * 신발까지 다 보여야 한다. 얼굴을 살리자고 위쪽만 남기면 정작 하의가 사라진다.
+     * 그래서 비율을 유지한 채 캔버스 안에 다 들어가게 얹고, 남는 자리는 채운다.
+     *
+     * 남는 자리를 종이색으로 칠하면 사진이 우표처럼 떠 보인다. 그래서 **같은 사진을
+     * 크게 확대해 흐린 뒤 뒤에 깐다.** 색과 밝기가 이어져 여백이 사진의 일부처럼
+     * 읽히고, 사진마다 다른 배경색에도 저절로 맞는다.
+     *
+     * 흐리게 만드는 방법은 축소 후 확대다. 큰 커널 컨볼루션은 1600px 짜리에서
+     * 눈에 띄게 느린데, 여기서 필요한 건 정확한 가우시안이 아니라 "형체가 사라진
+     * 색 덩어리"뿐이다. 그 위에 흰 막을 옅게 씌워 뒤로 물러나게 한다 — 뒤가 선명하면
+     * 주인공인 앞의 사진과 싸운다.
+     */
+    fun fitToTryonCanvas(bytes: ByteArray, type: ImageType): NormalizedImage {
+        // WEBP 는 디코더가 없어 픽셀을 만질 수 없다. 손대지 못하는 것은 그대로 둔다.
+        if (type == ImageType.WEBP) return NormalizedImage(bytes, type)
+        val source = runCatching { ImageIO.read(ByteArrayInputStream(bytes)) }.getOrNull()
+            ?: return NormalizedImage(bytes, type)
+
+        val cw = properties.tryonCanvasWidth
+        val ch = properties.tryonCanvasHeight
+        // 이미 캔버스와 같으면 다시 굽지 않는다. 재인코딩은 손실이다.
+        if (source.width == cw && source.height == ch) return NormalizedImage(bytes, type)
+
+        val canvas = BufferedImage(cw, ch, BufferedImage.TYPE_INT_RGB)
+        val g = canvas.createGraphics()
+        try {
+            g.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR)
+            g.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY)
+            drawBlurredBackdrop(g, source, cw, ch)
+
+            // 비율 유지 + 캔버스 안에 전부 들어가게(contain). 원본보다 크게 늘리지는
+            // 않는다 — 없는 디테일을 만들어 내는 대신 여백이 조금 더 생기는 편이 낫다.
+            val scale = minOf(cw.toDouble() / source.width, ch.toDouble() / source.height, 1.0)
+            val w = max(1, Math.round(source.width * scale).toInt())
+            val h = max(1, Math.round(source.height * scale).toInt())
+            val fitted = if (w == source.width && h == source.height) source else downscaleTo(source, w, h)
+            g.drawImage(fitted, (cw - w) / 2, (ch - h) / 2, null)
+        } finally {
+            g.dispose()
+        }
+        return NormalizedImage(encodeJpeg(canvas), ImageType.JPEG)
+    }
+
+    private fun drawBlurredBackdrop(g: java.awt.Graphics2D, source: BufferedImage, cw: Int, ch: Int) {
+        // 캔버스를 덮도록(cover) 키운 크기를 먼저 구하고, 그 비율 그대로 아주 작게
+        // 줄인다. 작게 줄이는 것 자체가 이웃 픽셀을 뭉개는 일이라 흐림이 된다.
+        val cover = max(cw.toDouble() / source.width, ch.toDouble() / source.height)
+        val tinyW = max(1, Math.round(source.width * cover / BLUR_DIVISOR).toInt())
+        val tinyH = max(1, Math.round(source.height * cover / BLUR_DIVISOR).toInt())
+        val tiny = downscaleTo(source, tinyW, tinyH)
+
+        val drawW = Math.round(source.width * cover).toInt()
+        val drawH = Math.round(source.height * cover).toInt()
+        g.drawImage(tiny, (cw - drawW) / 2, (ch - drawH) / 2, drawW, drawH, null)
+
+        // 흰 막. 뒤를 한 단계 밀어낸다.
+        val previous = g.composite
+        g.composite = java.awt.AlphaComposite.getInstance(java.awt.AlphaComposite.SRC_OVER, BACKDROP_VEIL)
+        g.color = Color.WHITE
+        g.fillRect(0, 0, cw, ch)
+        g.composite = previous
+    }
+
+    /** [downscale] 은 긴 변 기준이라, 목표 크기를 직접 주는 경로를 따로 둔다. */
+    private fun downscaleTo(source: BufferedImage, width: Int, height: Int): BufferedImage {
+        var current = source
+        while (current.width / 2 >= width && current.height / 2 >= height) {
+            current = redraw(current, max(1, current.width / 2), max(1, current.height / 2))
+        }
+        return if (current.width == width && current.height == height) current else redraw(current, width, height)
+    }
+
     private fun normalize(bytes: ByteArray, type: ImageType, maxEdge: Int): NormalizedImage {
         /*
          * WEBP 는 손대지 않고 그대로 통과시킨다. JDK 21 의 ImageIO 에는 WebP 디코더가
@@ -336,5 +413,11 @@ class ImageNormalizer(private val properties: MediaProperties) {
         const val ORIENTATION_NORMAL = 1
         const val ORIENTATION_MAX = 8
         const val OPAQUE = 255
+
+        /** 뒷배경을 몇 분의 일로 줄였다 늘릴지. 클수록 더 흐려진다. */
+        const val BLUR_DIVISOR = 26.0
+
+        /** 뒷배경 위에 씌우는 흰 막의 불투명도. */
+        const val BACKDROP_VEIL = 0.28f
     }
 }
