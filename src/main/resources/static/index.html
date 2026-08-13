@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="ko">
+<html lang="ja">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="color-scheme" content="light dark" />
-  <meta name="description" content="매일의 착장을 번호와 날짜로 기록하는 스타일 저널" />
+  <meta name="description" content="毎日の着こなしを番号と日付で記録するスタイルジャーナル" />
   <meta name="theme-color" content="#faf7f2" media="(prefers-color-scheme: light)" />
   <meta name="theme-color" content="#14120f" media="(prefers-color-scheme: dark)" />
   <title>ORBIT · AI Stylist</title>
@@ -104,7 +104,7 @@
 
   <header class="topbar" id="topbar">
     <div class="topbar__inner">
-      <button class="iconbtn topbar__back" id="btn-back" type="button" aria-label="뒤로" hidden>
+      <button class="iconbtn topbar__back" id="btn-back" type="button" aria-label="戻る" hidden>
         <svg class="ico" aria-hidden="true"><use href="#i-back" /></svg>
       </button>
 
@@ -124,8 +124,8 @@
   <div class="views" id="views">
 
     <!-- ====================== 홈 ====================== -->
-    <section class="view" id="view-home" tabindex="-1" aria-label="홈" hidden>
-      <h1 class="vh">오늘</h1>
+    <section class="view" id="view-home" tabindex="-1" aria-label="ホーム" hidden>
+      <h1 class="vh">今日</h1>
 
       <div id="home-skeleton" aria-hidden="true">
         <div class="sk sk--label"></div>
@@ -152,26 +152,26 @@
         <section class="block home__action" id="home-action-section">
           <div class="situation" id="home-situation">
             <p class="indexlabel">Today’s Context</p>
-            <h2 class="situation__title">오늘 상황 <span class="situation__opt">선택</span></h2>
-            <p class="situation__desc">한 줄 적어 두면 그걸 반영해서 골라요. 비워 두면 평소처럼 골라 드려요.</p>
+            <h2 class="situation__title">今日のシーン <span class="situation__opt">任意</span></h2>
+            <p class="situation__desc">一言メモしておくと、それに合わせて選びます。空のままでもいつも通り選べます。</p>
 
-            <div class="chips chips--wrap" id="situation-chips" role="group" aria-label="자주 쓰는 상황">
-              <button class="chip" type="button" data-situation="출근" aria-pressed="false">출근</button>
-              <button class="chip" type="button" data-situation="데이트" aria-pressed="false">데이트</button>
-              <button class="chip" type="button" data-situation="친구 만남" aria-pressed="false">친구 만남</button>
-              <button class="chip" type="button" data-situation="운동" aria-pressed="false">운동</button>
-              <button class="chip" type="button" data-situation="비 오는 날" aria-pressed="false">비 오는 날</button>
-              <button class="chip" type="button" data-situation="추운 날" aria-pressed="false">추운 날</button>
-              <button class="chip" type="button" data-situation="더운 날" aria-pressed="false">더운 날</button>
+            <div class="chips chips--wrap" id="situation-chips" role="group" aria-label="よく使うシーン">
+              <button class="chip" type="button" data-situation="出勤" aria-pressed="false">出勤</button>
+              <button class="chip" type="button" data-situation="デート" aria-pressed="false">デート</button>
+              <button class="chip" type="button" data-situation="友達と" aria-pressed="false">友達と</button>
+              <button class="chip" type="button" data-situation="運動" aria-pressed="false">運動</button>
+              <button class="chip" type="button" data-situation="雨の日" aria-pressed="false">雨の日</button>
+              <button class="chip" type="button" data-situation="寒い日" aria-pressed="false">寒い日</button>
+              <button class="chip" type="button" data-situation="暑い日" aria-pressed="false">暑い日</button>
             </div>
 
             <div class="field situation__field">
-              <label for="situation-input" class="vh">오늘 상황 (선택)</label>
+              <label for="situation-input" class="vh">今日のシーン（任意）</label>
               <input type="text" id="situation-input" maxlength="100" autocomplete="off"
-                     placeholder="예) 비 오고 쌀쌀해" />
+                     placeholder="例）雨で肌寒い" />
               <p class="field__hint situation__hint">
                 <span class="num"><span id="situation-count">0</span> / 100</span>
-                <button class="linkbtn situation__clear" id="btn-situation-clear" type="button" hidden>지우기</button>
+                <button class="linkbtn situation__clear" id="btn-situation-clear" type="button" hidden>クリア</button>
               </p>
             </div>
           </div>
@@ -179,8 +179,8 @@
           <button class="action" id="btn-recommend" type="button">
             <span class="action__icon accent"><svg class="ico" aria-hidden="true"><use href="#i-sparkle" /></svg></span>
             <span class="action__text">
-              <span class="action__title">AI 추천 받기</span>
-              <span class="action__sub" id="recommend-sub">옷장을 보고 오늘의 조합을 골라 드려요</span>
+              <span class="action__title">AIに選んでもらう</span>
+              <span class="action__sub" id="recommend-sub">クローゼットを見て今日の組み合わせを選びます</span>
             </span>
             <span class="action__tail" aria-hidden="true">
               <svg class="ico" aria-hidden="true"><use href="#i-next" /></svg>
@@ -191,7 +191,7 @@
           <!-- 추천도 7초쯤 걸린다. 입어보기와 같은 진행 감각을 준다. -->
           <div class="progress" id="home-progress" hidden>
             <div class="progress__track"><div class="progress__fill" id="home-progress-fill"></div></div>
-            <p class="progress__label" role="status" id="home-progress-label">준비하는 중…</p>
+            <p class="progress__label" role="status" id="home-progress-label">準備しています…</p>
           </div>
 
           <div class="note" id="home-retry" role="status" hidden>
@@ -216,11 +216,11 @@
           <div class="block__head">
             <p class="indexlabel">Archive</p>
             <button class="linkbtn" id="btn-see-all" type="button">
-              <span>전체 보기</span>
+              <span>すべて見る</span>
               <svg class="ico ico--sm" aria-hidden="true"><use href="#i-next" /></svg>
             </button>
           </div>
-          <h2 class="block__title">최근 기록</h2>
+          <h2 class="block__title">最近の記録</h2>
           <div class="looks looks--grid" id="home-recent"></div>
         </section>
 
@@ -228,9 +228,9 @@
         <section class="block home__onboard" id="home-onboard" hidden>
           <div class="empty">
             <p class="indexlabel">Wardrobe</p>
-            <h2 class="empty__title">옷장을 먼저 채워 주세요</h2>
-            <p class="empty__desc">상의와 하의가 하나씩만 있어도 첫 기록을 남길 수 있어요.</p>
-            <button class="btn btn--primary" data-open-add type="button">첫 옷 등록하기</button>
+            <h2 class="empty__title">まずはクローゼットを埋めましょう</h2>
+            <p class="empty__desc">トップスとボトムスが一着ずつあれば、最初の記録を残せます。</p>
+            <button class="btn btn--primary" data-open-add type="button">最初の一着を登録</button>
           </div>
         </section>
       </div>
@@ -238,24 +238,24 @@
 
 
     <!-- ====================== 옷장 ====================== -->
-    <section class="view" id="view-closet" tabindex="-1" aria-label="옷장" hidden>
+    <section class="view" id="view-closet" tabindex="-1" aria-label="クローゼット" hidden>
       <div class="pagehead">
         <p class="indexlabel">Wardrobe</p>
         <div class="pagehead__row">
-          <h1 class="pagehead__title">내 옷장</h1>
+          <h1 class="pagehead__title">クローゼット</h1>
           <button class="btn btn--ghost btn--tiny" data-open-add type="button">
             <svg class="ico ico--sm" aria-hidden="true"><use href="#i-plus" /></svg>
-            <span class="btn__text">옷 추가</span>
+            <span class="btn__text">服を追加</span>
           </button>
         </div>
         <p class="num" id="closet-count" hidden></p>
       </div>
 
-      <div class="chips" role="group" aria-label="카테고리 필터" id="closet-filters">
-        <button class="chip is-active" data-filter="ALL" aria-pressed="true" type="button">전체</button>
-        <button class="chip" data-filter="TOP" aria-pressed="false" type="button">상의</button>
-        <button class="chip" data-filter="BOTTOM" aria-pressed="false" type="button">하의</button>
-        <button class="chip" data-filter="OUTER" aria-pressed="false" type="button">아우터</button>
+      <div class="chips" role="group" aria-label="カテゴリーで絞り込み" id="closet-filters">
+        <button class="chip is-active" data-filter="ALL" aria-pressed="true" type="button">すべて</button>
+        <button class="chip" data-filter="TOP" aria-pressed="false" type="button">トップス</button>
+        <button class="chip" data-filter="BOTTOM" aria-pressed="false" type="button">ボトムス</button>
+        <button class="chip" data-filter="OUTER" aria-pressed="false" type="button">アウター</button>
       </div>
 
       <div class="itemgrid" id="closet-skeleton" aria-hidden="true" hidden>
@@ -265,21 +265,21 @@
 
       <div class="state state--error" id="closet-error" role="alert" hidden>
         <p class="state__title" id="closet-error-msg"></p>
-        <button class="btn btn--ghost" id="btn-closet-retry" type="button">다시 불러오기</button>
+        <button class="btn btn--ghost" id="btn-closet-retry" type="button">読み込み直す</button>
       </div>
 
       <div class="empty" id="closet-empty" hidden>
         <p class="indexlabel">Empty</p>
-        <h3 class="empty__title">아직 등록한 옷이 없어요</h3>
-        <p class="empty__desc">사진 한 장이면 이름·카테고리·색까지 자동으로 채워 드려요.</p>
-        <button class="btn btn--primary" data-open-add type="button">첫 옷 등록하기</button>
+        <h3 class="empty__title">まだ登録した服がありません</h3>
+        <p class="empty__desc">写真が一枚あれば、名前・カテゴリー・色まで自動で入ります。</p>
+        <button class="btn btn--primary" data-open-add type="button">最初の一着を登録</button>
       </div>
 
       <div class="empty" id="closet-empty-filter" hidden>
         <p class="indexlabel">Empty</p>
-        <h3 class="empty__title">이 카테고리는 비어 있어요</h3>
-        <p class="empty__desc">다른 카테고리를 보거나, 새로 등록해 보세요.</p>
-        <button class="btn btn--ghost" data-open-add type="button">옷 추가하기</button>
+        <h3 class="empty__title">このカテゴリーは空です</h3>
+        <p class="empty__desc">別のカテゴリーを見るか、新しく登録してみてください。</p>
+        <button class="btn btn--ghost" data-open-add type="button">服を追加</button>
       </div>
 
       <div class="itemgrid" id="closet-grid"></div>
@@ -287,25 +287,25 @@
       <div class="more" id="closet-more" hidden>
         <button class="btn btn--ghost btn--block" id="btn-load-more" type="button">
           <span class="btn__spinner" aria-hidden="true"></span>
-          <span class="btn__text">더 보기</span>
+          <span class="btn__text">もっと見る</span>
         </button>
       </div>
     </section>
 
 
     <!-- ====================== 기록 ====================== -->
-    <section class="view" id="view-history" tabindex="-1" aria-label="기록" hidden>
+    <section class="view" id="view-history" tabindex="-1" aria-label="記録" hidden>
       <div class="pagehead">
         <p class="indexlabel">Archive</p>
         <div class="pagehead__row">
-          <h1 class="pagehead__title">코디 기록</h1>
+          <h1 class="pagehead__title">コーデの記録</h1>
         </div>
         <p class="num" id="history-count" hidden></p>
       </div>
 
-      <div class="segmented" id="history-filter" role="group" aria-label="기록 필터">
-        <button class="segmented__item is-active" data-hfilter="ALL" aria-pressed="true" type="button">전체</button>
-        <button class="segmented__item" data-hfilter="FAV" aria-pressed="false" type="button">즐겨찾기</button>
+      <div class="segmented" id="history-filter" role="group" aria-label="記録の絞り込み">
+        <button class="segmented__item is-active" data-hfilter="ALL" aria-pressed="true" type="button">すべて</button>
+        <button class="segmented__item" data-hfilter="FAV" aria-pressed="false" type="button">お気に入り</button>
       </div>
 
       <div id="history-skeleton" aria-hidden="true" hidden>
@@ -314,26 +314,26 @@
 
       <div class="state state--error" id="history-error" role="alert" hidden>
         <p class="state__title" id="history-error-msg"></p>
-        <button class="btn btn--ghost" id="btn-history-retry" type="button">다시 불러오기</button>
+        <button class="btn btn--ghost" id="btn-history-retry" type="button">読み込み直す</button>
       </div>
 
       <div class="empty" id="history-empty" hidden>
         <p class="indexlabel">Empty</p>
-        <h3 class="empty__title" id="history-empty-title">아직 기록이 없어요</h3>
-        <p class="empty__desc" id="history-empty-desc">추천을 받으면 여기에 한 장씩 쌓여요.</p>
-        <button class="btn btn--primary" id="btn-history-go-home" type="button">추천 받으러 가기</button>
+        <h3 class="empty__title" id="history-empty-title">まだ記録がありません</h3>
+        <p class="empty__desc" id="history-empty-desc">コーデを選んでもらうと、ここに一枚ずつ増えていきます。</p>
+        <button class="btn btn--primary" id="btn-history-go-home" type="button">コーデを選んでもらう</button>
       </div>
 
       <div class="looks" id="history-list"></div>
 
-      <nav class="pager" id="history-pager" aria-label="페이지" hidden>
+      <nav class="pager" id="history-pager" aria-label="ページ" hidden>
         <button class="btn btn--ghost btn--tiny" id="btn-page-prev" type="button">
           <svg class="ico ico--sm" aria-hidden="true"><use href="#i-back" /></svg>
-          <span class="btn__text">이전</span>
+          <span class="btn__text">前へ</span>
         </button>
         <p class="num" id="history-pager-label" aria-live="polite"></p>
         <button class="btn btn--ghost btn--tiny" id="btn-page-next" type="button">
-          <span class="btn__text">다음</span>
+          <span class="btn__text">次へ</span>
           <svg class="ico ico--sm" aria-hidden="true"><use href="#i-next" /></svg>
         </button>
       </nav>
@@ -341,11 +341,11 @@
 
 
     <!-- ====================== 더보기 ====================== -->
-    <section class="view" id="view-more" tabindex="-1" aria-label="더보기" hidden>
+    <section class="view" id="view-more" tabindex="-1" aria-label="その他" hidden>
       <div class="pagehead">
         <p class="indexlabel">Settings</p>
         <div class="pagehead__row">
-          <h1 class="pagehead__title">더보기</h1>
+          <h1 class="pagehead__title">その他</h1>
         </div>
         <!-- 이 앱은 계정을 묻지 않는다. 이메일은 사용자에게 아무 뜻도 없으므로
              화면에 내놓지 않고, 서버가 준 표시 이름만 조용히 적어 둔다. -->
@@ -355,29 +355,29 @@
       <!-- AI 연결 -->
       <section class="panel" id="panel-key">
         <p class="indexlabel">AI Connection</p>
-        <h3 class="panel__title">AI 연결</h3>
-        <p class="panel__desc">코디 추천·사진 인식·입어보기에 쓰여요.</p>
+        <h3 class="panel__title">AI連携</h3>
+        <p class="panel__desc">コーデの提案・写真の読み取り・試着に使います。</p>
 
         <div class="panel__body" id="key-connected" hidden>
           <p class="keyline">
-            <span class="keyline__badge"><svg class="ico ico--sm" aria-hidden="true"><use href="#i-check" /></svg> 연결됨</span>
+            <span class="keyline__badge"><svg class="ico ico--sm" aria-hidden="true"><use href="#i-check" /></svg> 連携済み</span>
             <code class="num" id="key-masked"></code>
           </p>
           <!-- 키는 계정이 아니라 이 Orbit 에 붙어 있다. 사실대로 적는다. -->
-          <p class="field__hint">이 키는 이 Orbit 전체에 저장돼요. 여기서 만든 다른 계정도 같은 키를 함께 씁니다.</p>
+          <p class="field__hint">このキーは Orbit に保存されます。</p>
           <div class="btnrow">
-            <button class="btn btn--ghost" id="btn-key-change" type="button">키 바꾸기</button>
-            <button class="btn btn--quiet" id="btn-key-ask-remove" type="button">연결 해제</button>
+            <button class="btn btn--ghost" id="btn-key-change" type="button">キーを変更</button>
+            <button class="btn btn--quiet" id="btn-key-ask-remove" type="button">連携を解除</button>
           </div>
 
-          <!-- 해제는 이 Orbit 의 모든 계정에서 AI 가 멈춘다는 뜻이다. 한 번 묻는다. -->
-          <div class="confirm" id="key-remove-confirm" role="alertdialog" aria-label="연결 해제 확인" hidden>
-            <p class="confirm__q">연결을 해제하면 이 Orbit 의 모든 계정에서 추천·사진 인식·입어보기가 멈춰요.</p>
+          <!-- 해제는 AI 가 멈춘다는 뜻이다. 한 번 묻는다. -->
+          <div class="confirm" id="key-remove-confirm" role="alertdialog" aria-label="連携解除の確認" hidden>
+            <p class="confirm__q">連携を解除すると、コーデの提案・写真の読み取り・試着が使えなくなります。</p>
             <div class="confirm__actions">
-              <button class="btn btn--ghost btn--tiny" id="btn-key-remove-cancel" type="button">취소</button>
+              <button class="btn btn--ghost btn--tiny" id="btn-key-remove-cancel" type="button">キャンセル</button>
               <button class="btn btn--danger btn--tiny" id="btn-key-remove" type="button">
                 <span class="btn__spinner" aria-hidden="true"></span>
-                <span class="btn__text">연결 해제</span>
+                <span class="btn__text">連携を解除</span>
               </button>
             </div>
           </div>
@@ -385,43 +385,43 @@
 
         <div class="panel__body" id="key-setup">
           <p class="prose">
-            Orbit이 옷을 알아보고 코디를 골라 주려면 Google AI Studio에서 받는
-            무료 키가 하나 필요해요. 처음 한 번만 하면 됩니다.
+            Orbit が服を読み取ってコーデを選ぶには、Google AI Studio で発行する
+            無料のキーが一つ必要です。最初の一回だけで済みます。
           </p>
           <ol class="steps">
-            <li>아래 버튼으로 Google AI Studio를 열어요.</li>
-            <li>구글 계정으로 들어가 <b>Create API key</b>를 눌러요.</li>
-            <li>만들어진 긴 글자열을 복사해서 아래에 붙여넣어요.</li>
+            <li>下のボタンで Google AI Studio を開きます。</li>
+            <li>Google アカウントでログインして <b>Create API key</b> を押します。</li>
+            <li>表示された長い文字列をコピーして、下に貼り付けます。</li>
           </ol>
           <a class="btn btn--ghost btn--block" id="link-aistudio"
              href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer">
-            <span class="btn__text">Google AI Studio 열기</span>
+            <span class="btn__text">Google AI Studio を開く</span>
             <svg class="ico ico--sm" aria-hidden="true"><use href="#i-external" /></svg>
           </a>
 
           <form class="form" id="form-key" novalidate>
             <div class="field">
-              <label for="key-input">받은 키 붙여넣기</label>
+              <label for="key-input">発行したキーを貼り付け</label>
               <div class="inputrow">
                 <input type="password" id="key-input" autocomplete="off" spellcheck="false"
                        placeholder="AIza…" />
                 <button class="iconbtn inputrow__btn" id="btn-key-reveal" type="button"
-                        aria-label="입력한 키 보기" aria-pressed="false">
+                        aria-label="入力したキーを表示" aria-pressed="false">
                   <svg class="ico ico--sm" aria-hidden="true"><use href="#i-eye" /></svg>
                 </button>
               </div>
               <!-- 키는 계정별이 아니라 앱 전역이다. 예전 문구("이 기기의 Orbit에만
                    저장돼요")는 계정마다 따로 저장되는 것처럼 읽혔다. -->
-              <p class="field__hint">붙여넣은 키는 이 Orbit 에 저장돼요. 여기서 만든 다른 계정도 같은 키를 함께 씁니다.</p>
+              <p class="field__hint">貼り付けたキーは Orbit に保存されます。</p>
             </div>
             <div class="note note--error" id="key-error" role="alert" hidden></div>
             <div class="btnrow btnrow--form">
               <!-- 붙여넣을 키가 없을 때 빠져나갈 곳. 이 버튼이 없어서 "키 바꾸기"가
                    새로고침 말고는 탈출구 없는 막다른 화면이었다. -->
-              <button type="button" class="btn btn--ghost" id="btn-key-cancel" hidden>취소</button>
+              <button type="button" class="btn btn--ghost" id="btn-key-cancel" hidden>キャンセル</button>
               <button type="submit" class="btn btn--primary btn--block">
                 <span class="btn__spinner" aria-hidden="true"></span>
-                <span class="btn__text">연결하기</span>
+                <span class="btn__text">連携する</span>
               </button>
             </div>
           </form>
@@ -431,8 +431,8 @@
       <!-- 전신 사진 -->
       <section class="panel">
         <p class="indexlabel">Body Photo</p>
-        <h3 class="panel__title">전신 사진</h3>
-        <p class="panel__desc">‘입어보기’에 쓰여요. 전신이 다 나오고 밝은 곳에서 찍은 사진이 가장 잘 나와요.</p>
+        <h3 class="panel__title">全身写真</h3>
+        <p class="panel__desc">「試着」に使います。全身が写っていて、明るい場所で撮った写真がいちばんきれいに仕上がります。</p>
 
         <div class="panel__body">
           <!-- '입어보기'에서 여기로 보내 놓고 돌아갈 길을 안 주면, 사용자는 사진을
@@ -440,7 +440,7 @@
                기억했다가 그 자리로 되돌려 준다. -->
           <div class="note" id="body-photo-resume" role="status" hidden>
             <span class="note__body" id="body-photo-resume-msg"></span>
-            <button class="btn btn--tiny btn--primary" id="btn-body-photo-resume" type="button">입어보기 계속하기</button>
+            <button class="btn btn--tiny btn--primary" id="btn-body-photo-resume" type="button">試着に戻る</button>
           </div>
 
           <div class="note note--error" id="body-photo-error" role="alert" hidden></div>
@@ -448,21 +448,21 @@
           <div class="bodyphoto">
             <div class="frame frame--body" id="body-photo-preview">
               <span class="frame__initial" id="body-photo-placeholder" aria-hidden="true">NONE</span>
-              <span class="vh" id="body-photo-status">등록된 전신 사진 없음</span>
-              <img id="body-photo-img" alt="등록된 전신 사진" hidden />
+              <span class="vh" id="body-photo-status">全身写真は未登録</span>
+              <img id="body-photo-img" alt="登録した全身写真" hidden />
               <span class="overlay" id="body-photo-loading" hidden>
                 <span class="overlay__spinner" aria-hidden="true"></span>
-                <span>올리는 중…</span>
+                <span>アップロード中…</span>
               </span>
             </div>
             <div class="bodyphoto__side">
               <button type="button" class="btn btn--ghost" id="body-photo-label">
                 <svg class="ico ico--sm" aria-hidden="true"><use href="#i-camera" /></svg>
-                <span class="btn__text">사진 선택</span>
+                <span class="btn__text">写真を選ぶ</span>
               </button>
               <input type="file" id="body-photo-input" accept="image/*" class="vh"
-                     aria-label="전신 사진 파일 선택" />
-              <p class="field__hint">JPG · PNG · 10MB 이하</p>
+                     aria-label="全身写真のファイルを選択" />
+              <p class="field__hint">JPG・PNG・10MB以下</p>
             </div>
           </div>
         </div>
@@ -471,21 +471,21 @@
       <!-- 스타일 선호도 -->
       <section class="panel">
         <p class="indexlabel">Preference</p>
-        <h3 class="panel__title">스타일 선호도</h3>
-        <p class="panel__desc">평소 좋아하는 분위기를 적어 두면 추천에 반영돼요.</p>
+        <h3 class="panel__title">好みのスタイル</h3>
+        <p class="panel__desc">いつも好きな雰囲気を書いておくと、提案に反映されます。</p>
 
         <div class="panel__body">
           <form class="form" id="form-style">
             <div class="field">
-              <label for="style-input" class="vh">스타일 선호도</label>
+              <label for="style-input" class="vh">好みのスタイル</label>
               <textarea id="style-input" rows="3" maxlength="200"
-                        placeholder="예) 무채색 위주로 깔끔하게. 카고팬츠 자주 넣어 주세요."></textarea>
+                        placeholder="例）モノトーン中心ですっきりと。カーゴパンツをよく使ってください。"></textarea>
               <p class="field__hint num"><span id="style-count">0</span> / 200</p>
             </div>
             <div class="note note--error" id="style-error" role="alert" hidden></div>
             <button type="submit" class="btn btn--primary btn--block" id="btn-style-save">
               <span class="btn__spinner" aria-hidden="true"></span>
-              <span class="btn__text">저장</span>
+              <span class="btn__text">保存</span>
             </button>
           </form>
         </div>
@@ -494,7 +494,7 @@
       <!-- 옷장 통계 -->
       <section class="panel" id="panel-stats" hidden>
         <p class="indexlabel">Wardrobe Index</p>
-        <h3 class="panel__title">옷장 통계</h3>
+        <h3 class="panel__title">クローゼットの統計</h3>
         <div class="panel__body" id="stats-body"></div>
       </section>
 
@@ -503,7 +503,7 @@
 
 
     <!-- ====================== 코디 상세 ====================== -->
-    <section class="view view--detail" id="view-coord" tabindex="-1" aria-label="코디 상세" hidden>
+    <section class="view view--detail" id="view-coord" tabindex="-1" aria-label="コーデの詳細" hidden>
       <div id="coord-skeleton" aria-hidden="true" hidden>
         <div class="sk sk--label"></div><div class="sk sk--look"></div><div class="sk sk--row"></div>
       </div>
@@ -512,7 +512,7 @@
 
 
     <!-- ====================== 옷 상세 ====================== -->
-    <section class="view view--detail" id="view-item" tabindex="-1" aria-label="옷 상세" hidden>
+    <section class="view view--detail" id="view-item" tabindex="-1" aria-label="アイテムの詳細" hidden>
       <div id="item-skeleton" aria-hidden="true" hidden>
         <div class="sk sk--label"></div><div class="sk sk--look"></div><div class="sk sk--row"></div>
       </div>
@@ -524,25 +524,25 @@
   <!-- 좁은 폭에서는 하단 탭바, 넓은 폭에서는 왼쪽 세로 내비게이션.
        한 벌의 마크업으로 두 형태를 만든다 — 상태(활성 표시)를 두 곳에서
        따로 관리하면 반드시 어긋난다. 워드마크는 넓은 폭에서만 나온다. -->
-  <nav class="tabbar" id="tabbar" aria-label="주요 화면">
+  <nav class="tabbar" id="tabbar" aria-label="メイン画面">
     <div class="brandmark navbrand" aria-hidden="true">
       <p class="wordmark">ORBIT</p>
       <p class="wordmark__sub">AI Stylist</p>
     </div>
     <button class="tabbar__item is-active" data-nav="home" type="button" aria-current="page">
-      <svg class="ico" aria-hidden="true"><use href="#i-home" /></svg><span class="tabbar__label">홈</span>
+      <svg class="ico" aria-hidden="true"><use href="#i-home" /></svg><span class="tabbar__label">ホーム</span>
     </button>
     <button class="tabbar__item" data-nav="closet" type="button">
-      <svg class="ico" aria-hidden="true"><use href="#i-shirt" /></svg><span class="tabbar__label">옷장</span>
+      <svg class="ico" aria-hidden="true"><use href="#i-shirt" /></svg><span class="tabbar__label">クローゼット</span>
     </button>
     <button class="tabbar__item" data-nav="add" type="button">
-      <svg class="ico" aria-hidden="true"><use href="#i-plus" /></svg><span class="tabbar__label">옷 추가</span>
+      <svg class="ico" aria-hidden="true"><use href="#i-plus" /></svg><span class="tabbar__label">服を追加</span>
     </button>
     <button class="tabbar__item" data-nav="history" type="button">
-      <svg class="ico" aria-hidden="true"><use href="#i-clock" /></svg><span class="tabbar__label">기록</span>
+      <svg class="ico" aria-hidden="true"><use href="#i-clock" /></svg><span class="tabbar__label">記録</span>
     </button>
     <button class="tabbar__item" data-nav="more" type="button">
-      <svg class="ico" aria-hidden="true"><use href="#i-more" /></svg><span class="tabbar__label">더보기</span>
+      <svg class="ico" aria-hidden="true"><use href="#i-more" /></svg><span class="tabbar__label">その他</span>
     </button>
   </nav>
 </div><!-- /#app-shell -->
@@ -554,21 +554,21 @@
 <dialog class="sheet" id="add-sheet" aria-labelledby="add-sheet-title">
   <div class="sheet__grip" aria-hidden="true"></div>
   <form method="dialog" class="sheet__closeform">
-    <button class="iconbtn sheet__close" aria-label="닫기" value="cancel">
+    <button class="iconbtn sheet__close" aria-label="閉じる" value="cancel">
       <svg class="ico ico--sm" aria-hidden="true"><use href="#i-close" /></svg>
     </button>
   </form>
 
   <p class="indexlabel" id="add-sheet-kicker">New Item</p>
-  <h2 class="sheet__title" id="add-sheet-title">옷 추가</h2>
-  <p class="sheet__desc" id="add-sheet-desc">사진을 고르면 이름·카테고리·색을 자동으로 채워 드려요. 사진 없이 직접 입력해도 괜찮아요.</p>
+  <h2 class="sheet__title" id="add-sheet-title">服を追加</h2>
+  <p class="sheet__desc" id="add-sheet-desc">写真を選ぶと、名前・カテゴリー・色を自動で入力します。写真なしで直接入力しても大丈夫です。</p>
 
   <div class="note note--error" id="add-error" role="alert" hidden></div>
   <div class="note" id="analyze-warn" role="status" hidden></div>
 
   <form class="form" id="form-add" novalidate>
     <div class="picker" id="add-picker">
-      <button type="button" class="frame frame--pick" id="add-image-label" aria-label="옷 사진 고르기">
+      <button type="button" class="frame frame--pick" id="add-image-label" aria-label="服の写真を選ぶ">
         <span class="picker__empty" id="add-thumb-empty">
           <svg class="ico" aria-hidden="true"><use href="#i-camera" /></svg>
           <span class="indexlabel">Add Photo</span>
@@ -576,27 +576,27 @@
         <img id="add-thumb-img" alt="" hidden />
         <span class="overlay" id="analyze-loading" hidden>
           <span class="overlay__spinner" aria-hidden="true"></span>
-          <span>읽는 중…</span>
+          <span>読み取り中…</span>
         </span>
       </button>
-      <input type="file" id="add-image" accept="image/*" class="vh" aria-label="옷 사진 파일 선택" />
+      <input type="file" id="add-image" accept="image/*" class="vh" aria-label="服の写真のファイルを選択" />
       <div class="picker__side">
-        <p class="picker__hint">옷만 크게 나오도록 찍으면 더 잘 읽어요.</p>
-        <button type="button" class="btn btn--quiet btn--tiny" id="btn-clear-image" hidden>사진 빼기</button>
+        <p class="picker__hint">服だけが大きく写るように撮ると、より正確に読み取れます。</p>
+        <button type="button" class="btn btn--quiet btn--tiny" id="btn-clear-image" hidden>写真を外す</button>
       </div>
     </div>
 
     <div class="field">
-      <label for="add-name">이름 <span class="req" aria-hidden="true">*</span></label>
-      <input type="text" id="add-name" required maxlength="40" placeholder="예) 회색 맨투맨" />
+      <label for="add-name">名前 <span class="req" aria-hidden="true">*</span></label>
+      <input type="text" id="add-name" required maxlength="40" placeholder="例）グレーのスウェット" />
     </div>
 
     <fieldset class="field">
-      <legend>카테고리 <span class="req" aria-hidden="true">*</span></legend>
+      <legend>カテゴリー <span class="req" aria-hidden="true">*</span></legend>
       <div class="segmented" id="add-category">
-        <button type="button" class="segmented__item is-active" data-cat="TOP" aria-pressed="true">상의</button>
-        <button type="button" class="segmented__item" data-cat="BOTTOM" aria-pressed="false">하의</button>
-        <button type="button" class="segmented__item" data-cat="OUTER" aria-pressed="false">아우터</button>
+        <button type="button" class="segmented__item is-active" data-cat="TOP" aria-pressed="true">トップス</button>
+        <button type="button" class="segmented__item" data-cat="BOTTOM" aria-pressed="false">ボトムス</button>
+        <button type="button" class="segmented__item" data-cat="OUTER" aria-pressed="false">アウター</button>
       </div>
     </fieldset>
 
@@ -604,55 +604,55 @@
          서버가 아직 일부 항목을 받지 않을 수 있으므로 어느 칸이 비어도 저장은 된다. -->
     <div class="formgrid">
       <div class="field">
-        <label for="add-subcategory">세부 분류</label>
-        <input type="text" id="add-subcategory" maxlength="30" placeholder="예) 맨투맨 (선택)" />
+        <label for="add-subcategory">種類</label>
+        <input type="text" id="add-subcategory" maxlength="30" placeholder="例）スウェット（任意）" />
       </div>
 
       <div class="field">
-        <label for="add-color">색상</label>
-        <input type="text" id="add-color" maxlength="20" placeholder="예) 그레이 (선택)" />
+        <label for="add-color">色</label>
+        <input type="text" id="add-color" maxlength="20" placeholder="例）グレー（任意）" />
       </div>
 
       <div class="field">
-        <label for="add-material">소재</label>
-        <input type="text" id="add-material" maxlength="30" placeholder="예) 면 (선택)" />
+        <label for="add-material">素材</label>
+        <input type="text" id="add-material" maxlength="30" placeholder="例）コットン（任意）" />
       </div>
 
       <div class="field">
-        <label for="add-fit">핏</label>
-        <input type="text" id="add-fit" maxlength="20" list="list-fit" placeholder="예) 오버핏 (선택)" />
+        <label for="add-fit">シルエット</label>
+        <input type="text" id="add-fit" maxlength="20" list="list-fit" placeholder="例）オーバーサイズ（任意）" />
         <datalist id="list-fit">
-          <option value="오버핏"></option><option value="레귤러"></option>
-          <option value="슬림"></option><option value="와이드"></option>
+          <option value="オーバーサイズ"></option><option value="レギュラー"></option>
+          <option value="スリム"></option><option value="ワイド"></option>
         </datalist>
       </div>
 
       <!-- 계절은 실제로 쓰이는 값이 몇 개 안 된다. 칩으로 한 번에 넣게 하되
            고르는 것으로 막지는 않는다 — 칸은 언제나 직접 고쳐 쓸 수 있다. -->
       <div class="field field--wide">
-        <label for="add-season">계절</label>
+        <label for="add-season">季節</label>
         <div class="chips chips--wrap chips--field" id="add-season-chips"
-             role="group" aria-label="자주 쓰는 계절">
-          <button class="chip" type="button" data-season="봄·가을" aria-pressed="false">봄·가을</button>
-          <button class="chip" type="button" data-season="여름" aria-pressed="false">여름</button>
-          <button class="chip" type="button" data-season="겨울" aria-pressed="false">겨울</button>
-          <button class="chip" type="button" data-season="사계절" aria-pressed="false">사계절</button>
+             role="group" aria-label="よく使う季節">
+          <button class="chip" type="button" data-season="春・秋" aria-pressed="false">春・秋</button>
+          <button class="chip" type="button" data-season="夏" aria-pressed="false">夏</button>
+          <button class="chip" type="button" data-season="冬" aria-pressed="false">冬</button>
+          <button class="chip" type="button" data-season="通年" aria-pressed="false">通年</button>
         </div>
-        <input type="text" id="add-season" maxlength="20" placeholder="직접 적어도 돼요 (선택)" />
+        <input type="text" id="add-season" maxlength="20" placeholder="自由に入力できます（任意）" />
       </div>
     </div>
 
     <div class="field">
-      <label for="add-detail">설명 · 메모</label>
-      <input type="text" id="add-detail" maxlength="80" placeholder="예) 도톰해서 한겨울에도 따뜻해요 (선택)" />
-      <p class="field__hint">추천할 때 함께 쓰여요.</p>
+      <label for="add-detail">説明・メモ</label>
+      <input type="text" id="add-detail" maxlength="80" placeholder="例）厚手なので真冬でも暖かい（任意）" />
+      <p class="field__hint">提案するときに一緒に使われます。</p>
     </div>
 
     <div class="sheet__actions">
-      <button type="button" class="btn btn--ghost" id="btn-add-cancel">취소</button>
+      <button type="button" class="btn btn--ghost" id="btn-add-cancel">キャンセル</button>
       <button type="submit" class="btn btn--primary" id="btn-add-submit">
         <span class="btn__spinner" aria-hidden="true"></span>
-        <span class="btn__text">저장</span>
+        <span class="btn__text">保存</span>
       </button>
     </div>
   </form>
@@ -665,7 +665,7 @@
 <dialog class="sheet sheet--guide" id="guide-sheet" aria-labelledby="guide-title">
   <div class="sheet__grip" aria-hidden="true"></div>
   <form method="dialog" class="sheet__closeform">
-    <button class="iconbtn sheet__close" aria-label="닫기" value="cancel">
+    <button class="iconbtn sheet__close" aria-label="閉じる" value="cancel">
       <svg class="ico ico--sm" aria-hidden="true"><use href="#i-close" /></svg>
     </button>
   </form>
@@ -674,16 +674,16 @@
     <svg class="ico" aria-hidden="true"><use href="#i-sparkle" /></svg>
   </span>
   <p class="indexlabel">One More Step</p>
-  <h2 class="sheet__title" id="guide-title">AI 연결이 아직 안 되어 있어요</h2>
+  <h2 class="sheet__title" id="guide-title">AI連携がまだ済んでいません</h2>
   <p class="sheet__desc" id="guide-desc">
-    코디를 골라 주려면 Google AI Studio에서 받는 무료 키가 하나 필요해요.
-    더보기 화면에서 1분이면 끝나요.
+    コーデを選ぶには、Google AI Studio で発行する無料のキーが一つ必要です。
+    「その他」の画面で1分ほどで終わります。
   </p>
   <div class="sheet__actions sheet__actions--stack">
     <button class="btn btn--primary btn--block" id="btn-guide-go" type="button">
-      <span class="btn__text">연결하러 가기</span>
+      <span class="btn__text">連携しに行く</span>
     </button>
-    <button class="btn btn--quiet btn--block" id="btn-guide-later" type="button">나중에 할게요</button>
+    <button class="btn btn--quiet btn--block" id="btn-guide-later" type="button">あとで</button>
   </div>
 </dialog>
 
@@ -695,7 +695,7 @@
   <p class="wordmark">ORBIT</p>
   <p class="indexlabel boot__text" id="boot-label">Loading</p>
   <p class="boot__msg" id="boot-msg" role="alert" hidden></p>
-  <button class="btn btn--ghost" id="btn-boot-retry" type="button" hidden>다시 시도</button>
+  <button class="btn btn--ghost" id="btn-boot-retry" type="button" hidden>再試行</button>
 </div>
 
 <div class="toasts" id="toasts" aria-live="polite" aria-atomic="false"></div>

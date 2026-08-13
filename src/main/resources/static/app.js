@@ -30,6 +30,46 @@
   function show(el, on) { if (el) el.hidden = !on; }
   function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
 
+  /* ---------------- 日本語入力(IME) ----------------
+   *
+   * 일본어는 로마자를 치고 Enter 로 **변환을 확정**한다. 그 Enter 는 "제출"이
+   * 아니라 "이 한자로 하겠다"는 뜻인데, 폼 안의 한 줄짜리 입력칸에서는 브라우저가
+   * 그것을 그대로 암묵적 제출로 흘려보낼 수 있다. 그러면 「服」 를 확정하려던
+   * 손짓이 저장 버튼을 누른 것이 되고, 이 실수는 일본어 사용자가 **매번** 겪는다.
+   *
+   * 조합 중인지는 두 가지로 본다. `isComposing` 은 표준이지만 조합을 끝내는
+   * 그 Enter 에서 false 로 오는 브라우저가 있어, 예부터 쓰이는 keyCode 229 와
+   * 우리가 직접 세는 composition 상태를 함께 본다.
+   */
+  function isComposingEvent(e, el) {
+    return !!(e.isComposing || e.keyCode === 229 || (el && el.dataset.composing === '1'));
+  }
+
+  /** 조합 중 상태를 요소에 표시해 둔다. keydown 이 그것을 읽는다. */
+  function trackComposition(root) {
+    root.addEventListener('compositionstart', function (e) {
+      if (e.target && e.target.dataset) e.target.dataset.composing = '1';
+    }, true);
+    root.addEventListener('compositionend', function (e) {
+      if (e.target && e.target.dataset) delete e.target.dataset.composing;
+    }, true);
+  }
+  trackComposition(document);
+
+  /**
+   * 변환 확정 Enter 가 폼 제출로 새지 않게 막는다.
+   * textarea 는 Enter 가 줄바꿈이라 애초에 제출되지 않으므로 건드리지 않는다.
+   */
+  function guardImeSubmit(form) {
+    if (!form) return;
+    form.addEventListener('keydown', function (e) {
+      if (e.key !== 'Enter') return;
+      var el = e.target;
+      if (!el || el.tagName !== 'INPUT') return;
+      if (isComposingEvent(e, el)) e.preventDefault();
+    });
+  }
+
   /**
    * 방금 펼친 것을 눈에 보이는 자리로 데려온다.
    *
@@ -107,35 +147,41 @@
     }, kind === 'error' ? 4200 : 2600);
   }
 
-  /* ---------------- 오류 → 사람 말 ---------------- */
+  /* ---------------- 오류 → 사람 말 ----------------
+   *
+   * 화면에 나가는 오류 문구는 **전부 여기서 만든다.** 서버가 주는 `detail` 은
+   * 쓰지 않는다 — 한 화면에서 서버 문장과 클라이언트 문장이 섞이면 말투도
+   * 높임도 제각각이 되고, 서버가 문구를 고칠 때마다 화면이 같이 흔들린다.
+   * 서버의 `error` 코드만 읽고 문장은 이쪽이 책임진다.
+   */
   function humanError(err) {
-    if (!err) return '알 수 없는 문제가 생겼어요.';
+    if (!err) return '原因のわからない問題が起きました。';
     if (err.name === 'AbortError') return null;
-    if (!err.isApiError) return '문제가 생겼어요. 잠시 후 다시 시도해 주세요.';
+    if (!err.isApiError) return '問題が起きました。しばらくしてからもう一度お試しください。';
 
     switch (err.code) {
-      case 'not_enough_clothes': return '상의와 하의를 최소 하나씩 등록해 주세요.';
-      case 'no_body_photo': return '입어보기를 하려면 전신 사진이 필요해요.';
+      case 'not_enough_clothes': return 'トップスとボトムスを最低一着ずつ登録してください。';
+      case 'no_body_photo': return '試着には全身写真が必要です。';
       case 'no_session':
-      case 'session_expired': return '세션을 이어 가지 못했어요. 잠시 후 다시 시도해 주세요.';
-      case 'network': return '서버에 연결할 수 없어요. Orbit 이 켜져 있는지 확인해 주세요.';
-      case 'clothes_in_use': return '코디에 쓰인 옷이라 지금은 지울 수 없어요.';
-      case 'invalid_key': return '키가 올바르지 않아요. 복사한 글자를 다시 확인해 주세요.';
+      case 'session_expired': return 'セッションを続けられませんでした。しばらくしてからもう一度お試しください。';
+      case 'network': return 'サーバーに接続できません。Orbit が起動しているか確認してください。';
+      case 'clothes_in_use': return 'コーデに使われているため、今は削除できません。';
+      case 'invalid_key': return 'キーが正しくありません。コピーした文字をもう一度確認してください。';
       // AI 가 상의·하의를 갖춘 조합을 내놓지 못한 경우. 서버가 걸러 낸 것이므로
       // 사용자가 고칠 수 있는 것은 없다. 다시 해 보라고만 말한다.
-      case 'ai_invalid_response': return '추천을 만들지 못했어요. 잠시 뒤 다시 시도해 주세요.';
+      case 'ai_invalid_response': return 'コーデを作れませんでした。しばらくしてからもう一度お試しください。';
     }
     switch (err.status) {
-      case 0: return '서버에 연결할 수 없어요. Orbit 이 켜져 있는지 확인해 주세요.';
-      case 400: return '입력한 내용을 다시 확인해 주세요.';
-      case 401: return '세션을 이어 가지 못했어요. 잠시 후 다시 시도해 주세요.';
-      case 403: return '권한이 없어요.';
-      case 404: return '찾을 수 없어요. 새로고침 후 다시 시도해 주세요.';
-      case 413: return '사진 용량이 너무 커요. 10MB 이하로 올려 주세요.';
-      case 502: return '추천을 만들지 못했어요. 잠시 뒤 다시 시도해 주세요.';
-      case 503: return 'AI 가 지금 응답하지 않아요. 잠시 후 다시 시도해 주세요.';
+      case 0: return 'サーバーに接続できません。Orbit が起動しているか確認してください。';
+      case 400: return '入力した内容をもう一度確認してください。';
+      case 401: return 'セッションを続けられませんでした。しばらくしてからもう一度お試しください。';
+      case 403: return '権限がありません。';
+      case 404: return '見つかりませんでした。再読み込みしてからもう一度お試しください。';
+      case 413: return '写真のサイズが大きすぎます。10MB以下でアップロードしてください。';
+      case 502: return 'コーデを作れませんでした。しばらくしてからもう一度お試しください。';
+      case 503: return 'AI が応答していません。しばらくしてからもう一度お試しください。';
     }
-    return '문제가 생겼어요. 잠시 후 다시 시도해 주세요.';
+    return '問題が起きました。しばらくしてからもう一度お試しください。';
   }
 
   function isExpired(err) { return err && err.isApiError && err.code === 'session_expired'; }
@@ -150,11 +196,11 @@
    * 그대로 지키면서 실제 단어로 바꾼다.
    */
   var CATEGORY = {
-    TOP:    { label: '상의',   en: 'Top',    initial: 'TOP' },
-    BOTTOM: { label: '하의',   en: 'Bottom', initial: 'BOTTOM' },
-    OUTER:  { label: '아우터', en: 'Outer',  initial: 'OUTER' }
+    TOP:    { label: 'トップス', en: 'Top',    initial: 'TOP' },
+    BOTTOM: { label: 'ボトムス', en: 'Bottom', initial: 'BOTTOM' },
+    OUTER:  { label: 'アウター', en: 'Outer',  initial: 'OUTER' }
   };
-  function catOf(key) { return CATEGORY[key] || { label: '기타', en: 'Item', initial: 'ITEM' }; }
+  function catOf(key) { return CATEGORY[key] || { label: 'その他', en: 'Item', initial: 'ITEM' }; }
 
   var MAX_UPLOAD = 10 * 1024 * 1024;
 
@@ -172,11 +218,17 @@
     if (typeof n !== 'number' || !isFinite(n)) return 'Look';   // 서버가 못 준 경우
     return 'Look ' + (n < 100 ? ('00' + n).slice(-3) : String(n));
   }
+  /**
+   * 날짜. 일본에서 숫자로 적는 날짜는 `2026/08/13` 이 표준이다.
+   * (`2026.08.13` 은 한국식이고, `2026年8月13日` 은 mono 로 자릿수를 맞춰 세로로
+   *  쌓아 두는 이 자리에서는 길이가 들쭉날쭉해진다.)
+   * 시각은 24시간제 — 일본도 같다.
+   */
   function dateOf(iso) {
     var d = new Date(iso);
     if (isNaN(d)) return '';
-    return d.getFullYear() + '.' + String(d.getMonth() + 1).padStart(2, '0') +
-           '.' + String(d.getDate()).padStart(2, '0');
+    return d.getFullYear() + '/' + String(d.getMonth() + 1).padStart(2, '0') +
+           '/' + String(d.getDate()).padStart(2, '0');
   }
   function timeOf(iso) {
     var d = new Date(iso);
@@ -254,7 +306,7 @@
    */
   function tryOnFrameHtml(c, extra) {
     return '<span class="frame frame--look"' + (extra || '') + '>' +
-      imgTag(c.tryOnImageUrl, 'AI 가 만든 입어본 모습') + '</span>';
+      imgTag(c.tryOnImageUrl, 'AI が作った試着姿') + '</span>';
   }
 
   /** 원본 옷 사진 스트립. 가상 착용 결과가 있어도 이 그림은 사라지지 않아야 한다. */
@@ -288,13 +340,13 @@
    */
   function aiPillHtml(c) {
     return '<span class="pill" data-ai-pill><span class="pill__dot" aria-hidden="true"></span>' +
-      (c && c.tryOnImageUrl ? 'AI 생성 이미지' : 'AI 추천') + '</span>';
+      (c && c.tryOnImageUrl ? 'AI生成画像' : 'AI提案') + '</span>';
   }
 
   function favBtnHtml(c) {
     return '<button class="photobtn' + (c.favorite ? ' is-on' : '') + '" type="button" ' +
       'data-fav="' + esc(c.id) + '" aria-pressed="' + (c.favorite ? 'true' : 'false') + '" ' +
-      'aria-label="즐겨찾기">' + icon(c.favorite ? 'heart-fill' : 'heart') + '</button>';
+      'aria-label="お気に入り">' + icon(c.favorite ? 'heart-fill' : 'heart') + '</button>';
   }
 
   /**
@@ -309,7 +361,7 @@
   /** LOOK 카드 — 이 앱의 얼굴 */
   function lookHtml(c) {
     var items = sortedItems(c);
-    var title = c.title || '오늘의 코디';
+    var title = c.title || '今日のコーデ';
     var situation = situationOf(c);
     return '<article class="look" data-id="' + esc(c.id) + '">' +
       '<div class="look__head">' +
@@ -318,7 +370,7 @@
       '</div>' +
       '<div class="look__figure">' +
         '<button class="look__open" type="button" data-coord-open="' + esc(c.id) + '" ' +
-                'data-coord-title="' + esc(title) + '" aria-label="' + esc(title) + ' 자세히 보기">' +
+                'data-coord-title="' + esc(title) + '" aria-label="' + esc(title) + ' の詳細を見る">' +
           lookFrameHtml(c) + aiPillHtml(c) +
         '</button>' +
         favBtnHtml(c) +
@@ -339,7 +391,7 @@
    * 를 훑는 것뿐이라, 가로로 넘기는 작은 카드로 줄인다.
    */
   function miniLookHtml(c) {
-    var title = c.title || '오늘의 코디';
+    var title = c.title || '今日のコーデ';
     return '<button class="minilook" type="button" data-coord-open="' + esc(c.id) + '" ' +
             'data-coord-title="' + esc(title) + '">' +
       lookFrameHtml(c) +
@@ -388,12 +440,12 @@
    * 라우터
    * ================================================================ */
   var VIEWS = {
-    home:    { el: '#view-home',    root: true,  title: '홈' },
-    closet:  { el: '#view-closet',  root: true,  title: '내 옷장' },
-    history: { el: '#view-history', root: true,  title: '코디 기록' },
-    more:    { el: '#view-more',    root: true,  title: '더보기' },
-    coord:   { el: '#view-coord',   root: false, title: '코디' },
-    item:    { el: '#view-item',    root: false, title: '옷' }
+    home:    { el: '#view-home',    root: true,  title: 'ホーム' },
+    closet:  { el: '#view-closet',  root: true,  title: 'クローゼット' },
+    history: { el: '#view-history', root: true,  title: 'コーデの記録' },
+    more:    { el: '#view-more',    root: true,  title: 'その他' },
+    coord:   { el: '#view-coord',   root: false, title: 'コーデ' },
+    item:    { el: '#view-item',    root: false, title: 'アイテム' }
   };
 
   var stack = [{ name: 'home', params: {}, scroll: 0 }];
@@ -611,7 +663,7 @@
   }
 
   api.onSessionExpired(function () {
-    showBootError('세션을 이어 갈 수 없어요. 잠시 후 다시 시도해 주세요.');
+    showBootError('セッションを続けられませんでした。しばらくしてからもう一度お試しください。');
   });
 
   /* ================================================================
@@ -645,7 +697,7 @@
     // 취소는 되돌아갈 자리가 있을 때만 뜻이 있다 (= 이미 연결돼 있을 때).
     show($('#btn-key-cancel'), editing);
     var submitText = $('.btn__text', $('#form-key button[type=submit]'));
-    if (submitText) submitText.textContent = editing ? '새 키로 바꾸기' : '연결하기';
+    if (submitText) submitText.textContent = editing ? '新しいキーに変更' : '連携する';
 
     // 해제 확인은 패널을 다시 그릴 때마다 접어 둔다.
     showKeyRemoveConfirm(false);
@@ -655,7 +707,7 @@
     var sub = $('#recommend-sub');
     if (sub) {
       // 연결이 안 됐다는 사실이 우선이고, 그 외에는 '오늘 상황' 이 문구를 맡는다.
-      if (state.ai.checked && !state.ai.configured) sub.textContent = 'AI 연결을 마치면 바로 쓸 수 있어요';
+      if (state.ai.checked && !state.ai.configured) sub.textContent = 'AI連携を済ませるとすぐ使えます';
       else syncSituation();
     }
   }
@@ -673,10 +725,10 @@
    */
   function openGuide(opts) {
     opts = opts || {};
-    $('#guide-title').textContent = opts.title || 'AI 연결이 아직 안 되어 있어요';
+    $('#guide-title').textContent = opts.title || 'AI連携がまだ済んでいません';
     $('#guide-desc').textContent = opts.desc ||
-      '코디를 골라 주려면 Google AI Studio에서 받는 무료 키가 하나 필요해요. 더보기 화면에서 1분이면 끝나요.';
-    $('.btn__text', $('#btn-guide-go')).textContent = opts.action || '연결하러 가기';
+      'コーデを選ぶには、Google AI Studio で発行する無料のキーが一つ必要です。「その他」の画面で1分ほどで終わります。';
+    $('.btn__text', $('#btn-guide-go')).textContent = opts.action || '連携しに行く';
     guideSheet.__go = opts.go || function () { navigate('more'); focusKeyPanel(); };
     openSheet(guideSheet);
   }
@@ -775,10 +827,10 @@
     $('#home-today').innerHTML = today.length
       ? lookHtml(today[0])
       : '<div class="empty empty--inline">' +
-          '<h2 class="empty__title">오늘의 기록이 아직 없어요</h2>' +
+          '<h2 class="empty__title">今日の記録はまだありません</h2>' +
           '<p class="empty__desc">' + (closetEmpty
-            ? '옷을 먼저 등록하면 오늘 입을 조합을 만들어 드려요.'
-            : '추천을 받으면 오늘 입을 조합이 여기에 남아요.') + '</p>' +
+            ? '先に服を登録すると、今日の組み合わせを作れます。'
+            : 'コーデを選んでもらうと、今日の組み合わせがここに残ります。') + '</p>' +
         '</div>';
     hydrateImages($('#home-today'));
 
@@ -813,11 +865,13 @@
     show($('#home-index-section'), meaningful);
     if (!meaningful) return;
 
+    // 助数詞: 기록은 '件', 옷은 '着'. 숫자 뒤에 붙는 이 한 글자가 일본어에서는
+    // 단위가 아니라 문법이라, 하나로 뭉뚱그리면 바로 어색해진다.
     var cells = [
-      { label: 'Looks', value: looks, unit: '개', to: 'history' },
-      { label: 'Wardrobe', value: total || 0, unit: '벌', to: 'closet' }
+      { label: 'Looks', value: looks, unit: '件', to: 'history' },
+      { label: 'Wardrobe', value: total || 0, unit: '着', to: 'closet' }
     ];
-    if (never != null) cells.push({ label: 'Never worn', value: never, unit: '벌', to: 'closet' });
+    if (never != null) cells.push({ label: 'Never worn', value: never, unit: '着', to: 'closet' });
 
     $('#home-index').innerHTML = cells.map(function (c) {
       return '<button class="statcell" type="button" data-index-go="' + esc(c.to) + '">' +
@@ -864,9 +918,17 @@
     return situationInput ? situationInput.value.trim().slice(0, 100) : '';
   }
 
-  /** 입력칸의 내용을 쉼표로 끊어 본 목록. 칩의 눌림 상태를 여기서 읽는다. */
+  /**
+   * 입력칸의 내용을 쉼표로 끊어 본 목록. 칩의 눌림 상태를 여기서 읽는다.
+   *
+   * 일본어 키보드로 치면 쉼표는 반각 `,` 이 아니라 읽점 `、` 이나 전각 `，` 로
+   * 들어온다. 셋 다 끊는 자리로 본다 — 안 그러면 손으로 「出勤、雨の日」 라고
+   * 적었을 때 칩이 하나도 눌린 표시가 나지 않는다.
+   */
+  var SEPARATOR = /[,、，]/;
+
   function situationParts() {
-    return situationValue().split(',').map(function (s) { return s.trim(); })
+    return situationValue().split(SEPARATOR).map(function (s) { return s.trim(); })
       .filter(function (s) { return s.length > 0; });
   }
 
@@ -887,8 +949,8 @@
     if (sub && state.ai.checked && !state.ai.configured) return;
     if (sub) {
       sub.textContent = value
-        ? '‘' + value + '’ 을(를) 반영해서 골라 드려요'
-        : '옷장을 보고 오늘의 조합을 골라 드려요';
+        ? '「' + value + '」を反映して選びます'
+        : 'クローゼットを見て今日の組み合わせを選びます';
     }
   }
 
@@ -911,7 +973,7 @@
     if (!situationInput) return;
     var last = null;
     try { last = window.localStorage.getItem(LAST_SITUATION_KEY); } catch (e) { last = null; }
-    situationInput.placeholder = last ? '지난번엔 ‘' + last + '’' : '예) 비 오고 쌀쌀해';
+    situationInput.placeholder = last ? '前回は「' + last + '」' : '例）雨で肌寒い';
   }
 
   if (situationInput) {
@@ -937,8 +999,10 @@
     });
 
     // 상황을 치다가 Enter 를 누르면 그대로 추천이 돌아야 한다. 폼이 아니므로 직접 잇는다.
+    // 다만 그 Enter 가 IME 변환을 확정하는 것이면 아직 다 쓴 게 아니다 — 흘려보낸다.
     situationInput.addEventListener('keydown', function (e) {
-      if (e.key !== 'Enter' || e.isComposing) return;
+      if (e.key !== 'Enter') return;
+      if (isComposingEvent(e, situationInput)) return;
       e.preventDefault();
       var btn = $('#btn-recommend');
       if (btn && !btn.disabled && !btn.hidden) btn.click();
@@ -961,11 +1025,11 @@
    * 스피너 하나뿐이었다. 기다림의 질이 화면마다 다를 이유가 없다. 같은 부품을 쓴다.
    */
   var REC_STAGES = [
-    [0,  '옷장을 펼치는 중…'],
-    [22, '오늘 입을 만한 옷을 추리는 중…'],
-    [50, '색과 소재를 맞춰 보는 중…'],
-    [75, '고른 이유를 적는 중…'],
-    [92, '거의 다 됐어요…']
+    [0,  'クローゼットを開いています…'],
+    [22, '今日着られそうな服を絞り込んでいます…'],
+    [50, '色と素材を合わせています…'],
+    [75, '選んだ理由を書いています…'],
+    [92, 'もうすぐです…']
   ];
 
   function recStatus(msg) {
@@ -976,7 +1040,7 @@
   function recArmSlowHint() {
     clearTimeout(recSlowTimer);
     recSlowTimer = setTimeout(function () {
-      recStatus('생각보다 오래 걸리고 있어요. 조금만 더 기다려 주세요.');
+      recStatus('思ったより時間がかかっています。もう少しお待ちください。');
     }, SLOW_HINT_MS);
   }
 
@@ -985,11 +1049,11 @@
    * 20~30초가 걸리므로 첫 단계보다 더 또렷한 진행 감각이 필요하다.
    */
   var REC_TRYON_STAGES = [
-    [0,  '입은 모습을 만드는 중…'],
-    [20, '전신 사진을 살펴보는 중…'],
-    [45, '옷을 하나씩 입혀 보는 중…'],
-    [72, '마무리하는 중… 조금만 기다려 주세요'],
-    [92, '거의 다 됐어요…']
+    [0,  '着た姿を作っています…'],
+    [20, '全身写真を確認しています…'],
+    [45, '服を一つずつ着せています…'],
+    [72, '仕上げています…もう少しお待ちください'],
+    [92, 'もうすぐです…']
   ];
 
   function recStart() {
@@ -1006,7 +1070,7 @@
     if (recProgress) recProgress.stop();
     show($('#home-progress'), true);
     recProgress = startProgress($('#home-progress-fill'), $('#home-progress-label'), REC_TRYON_STAGES);
-    recStatus('입은 모습을 만드는 데 20~30초쯤 걸려요.');
+    recStatus('着た姿を作るのに20〜30秒ほどかかります。');
   }
 
   function recStop() {
@@ -1024,7 +1088,7 @@
     var btn = this;
     // 이번 호출에만 쓰이는 한 줄. 비어 있으면 서버로 아예 나가지 않는다.
     var situation = situationValue();
-    var done = busy(btn, '고르는 중…');
+    var done = busy(btn, '選んでいます…');
     setNote($('#home-error'), '', $('#home-error-msg'));
     show($('#home-error-action'), false);
     recStart();
@@ -1036,12 +1100,12 @@
       recAttempt = retry.n;
       if (recProgress) {
         recProgress.hold(retry.kind === 'dup'
-          ? '같은 조합이 나와서 다시 고르는 중… (' + retry.n + '/' + retry.max + ')'
-          : '조합이 제대로 만들어지지 않아 다시 고르는 중…');
+          ? '同じ組み合わせが出たので選び直しています…（' + retry.n + '/' + retry.max + '）'
+          : 'うまく組み合わせられなかったので選び直しています…');
       }
       recArmSlowHint();
     }).then(function (created) {
-      if (recProgress) recProgress.finish('골랐어요!');
+      if (recProgress) recProgress.finish('選びました！');
       clearTimeout(recSlowTimer);
       show($('#home-retry'), false);
       // 오늘 상황은 이번 한 번짜리다. 남겨 두면 다음 추천에 엉뚱하게 딸려 간다.
@@ -1064,22 +1128,22 @@
       if (isExpired(err)) return;
 
       if (err && err.code === 'duplicate_exhausted') {
-        homeError('오늘 나올 수 있는 조합을 다 봤어요. 옷을 더 등록하면 새로운 조합이 생겨요.', {
-          label: '옷 추가하기', run: function () { navigate('closet'); openAddSheet(); }
+        homeError('今日出せる組み合わせは出尽くしました。服を追加すると新しい組み合わせが生まれます。', {
+          label: '服を追加', run: function () { navigate('closet'); openAddSheet(); }
         });
         return;
       }
       if (err.isApiError && err.code === 'not_enough_clothes') {
         homeError(humanError(err), {
-          label: '옷 등록하기', run: function () { navigate('closet'); openAddSheet(); }
+          label: '服を登録', run: function () { navigate('closet'); openAddSheet(); }
         });
         return;
       }
       if (err.isApiError && err.status === 503) {
         openGuide({
-          title: 'AI 가 지금 응답하지 않아요',
-          desc: '연결한 키가 아직 살아 있는지 확인해 보고, 잠시 후 다시 시도해 주세요.',
-          action: '연결 확인하러 가기'
+          title: 'AI が応答していません',
+          desc: '連携したキーが有効か確認して、しばらくしてからもう一度お試しください。',
+          action: '連携を確認しに行く'
         });
         return;
       }
@@ -1087,8 +1151,8 @@
       // 불러 봤고 그래도 안 됐다. 사용자가 고칠 수 있는 것은 없으니 문구는
       // 짧게 두고, 다시 누를 길만 바로 옆에 둔다.
       if (err.isApiError && (err.code === 'ai_invalid_response' || err.status === 502)) {
-        homeError('추천을 만들지 못했어요. 잠시 뒤 다시 시도해 주세요.', {
-          label: '다시 시도', run: function () { $('#btn-recommend').click(); }
+        homeError('コーデを作れませんでした。しばらくしてからもう一度お試しください。', {
+          label: 'もう一度試す', run: function () { $('#btn-recommend').click(); }
         });
         return;
       }
@@ -1110,23 +1174,23 @@
    */
   function autoTryOn(created) {
     var id = created && created.id;
-    if (!id) return Promise.resolve({ message: '오늘의 코디를 골랐어요.' });
+    if (!id) return Promise.resolve({ message: '今日のコーデを選びました。' });
 
     function guide() {
       // 합성할 대상이 없다. 추천은 그대로 두고, 등록하고 돌아오는 길만 열어 준다.
       state.tryOnNote = {
         id: id, kind: 'guide',
-        message: '전신 사진을 등록하면 이 코디를 입은 모습을 만들어 드려요.',
-        action: 'go-body-photo', actionLabel: '전신 사진 등록하기'
+        message: '全身写真を登録すると、このコーデを着た姿を作れます。',
+        action: 'go-body-photo', actionLabel: '全身写真を登録'
       };
-      return { message: '오늘의 코디를 골랐어요. 전신 사진을 등록하면 입은 모습도 만들어 드려요.' };
+      return { message: '今日のコーデを選びました。全身写真を登録すると着た姿も作れます。' };
     }
     function failed(msg) {
       state.tryOnNote = {
         id: id, kind: 'error',
-        message: msg || '입은 모습을 만들지 못했어요. 아래 버튼으로 다시 만들 수 있어요.'
+        message: msg || '着た姿を作れませんでした。下のボタンでもう一度作れます。'
       };
-      return { message: '오늘의 코디를 골랐어요. 입은 모습은 만들지 못했어요.' };
+      return { message: '今日のコーデを選びました。着た姿は作れませんでした。' };
     }
 
     if (!(state.user && state.user.bodyPhotoUrl)) return Promise.resolve(guide());
@@ -1139,13 +1203,13 @@
       if (state.coord.data && String(state.coord.data.id) === String(id)) {
         state.coord.data.tryOnImageUrl = url;
       }
-      if (recProgress) recProgress.finish('완성됐어요!');
-      return { message: '오늘의 코디와 입은 모습을 만들었어요.' };
+      if (recProgress) recProgress.finish('完成しました！');
+      return { message: '今日のコーデと着た姿ができました。' };
     }).catch(function (err) {
       if (isExpired(err)) throw err;
       if (err && err.isApiError && err.code === 'no_body_photo') return guide();
       if (err && err.isApiError && err.status === 503) {
-        return failed('AI 가 지금 응답하지 않아 입은 모습을 만들지 못했어요. 잠시 후 다시 만들어 주세요.');
+        return failed('AI が応答しないため、着た姿を作れませんでした。しばらくしてからもう一度お試しください。');
       }
       return failed();
     });
@@ -1238,7 +1302,7 @@
       show($('#closet-count'), false);
       show($('#closet-skeleton'), true);
     }
-    var done = first ? function () {} : busy($('#btn-load-more'), '불러오는 중…');
+    var done = first ? function () {} : busy($('#btn-load-more'), '読み込んでいます…');
 
     return api.clothes.list({
       page: state.closet.page,
@@ -1279,8 +1343,8 @@
     if (items.length > 0) {
       // 섹션 라벨의 영문은 디자인이지만, 개수를 세는 문장은 사용자의 말이어야 한다.
       $('#closet-count').textContent = state.closet.filter === 'ALL'
-        ? state.closet.totalElements + '벌'
-        : catOf(state.closet.filter).label + ' ' + items.length + '벌';
+        ? state.closet.totalElements + '着'
+        : catOf(state.closet.filter).label + ' ' + items.length + '着';
     }
 
     closetGrid.innerHTML = items.map(clothesCardHtml).join('');
@@ -1325,7 +1389,7 @@
   /* ================================================================
    * 옷 상세
    * ================================================================ */
-  function openItem(id, title) { navigate('item', { id: id, title: title || '옷' }); }
+  function openItem(id, title) { navigate('item', { id: id, title: title || 'アイテム' }); }
 
   function onItemEnter(id) {
     var host = $('#item-detail');
@@ -1338,7 +1402,7 @@
     show($('#item-skeleton'), true);
     api.clothes.get(id).then(function (data) {
       state.item.data = data;
-      $('#topbar-title').textContent = data.name || '옷';
+      $('#topbar-title').textContent = data.name || 'アイテム';
       renderItem();
       return api.clothes.coordinations(id, { page: 0, size: 20 }).then(function (page) {
         state.item.usedIn = (page && page.content) || [];
@@ -1375,7 +1439,7 @@
     var usedInBlock = usedIn.length
       ? '<div class="minilooks">' + usedIn.map(miniLookHtml).join('') + '</div>'
       : '<div class="empty empty--inline"><p class="empty__desc">' +
-          (state.item.usedInUnavailable ? '아직 정리된 코디가 없어요.' : '이 옷이 쓰인 코디가 아직 없어요.') +
+          (state.item.usedInUnavailable ? 'まだ整理されたコーデがありません。' : 'このアイテムを使ったコーデはまだありません。') +
         '</p></div>';
 
     // 넓은 화면에서는 왼쪽 사진 / 오른쪽 정보로 갈라진다(.detail--split).
@@ -1401,14 +1465,14 @@
           // 로 분류한 적이 있다. 자동 입력을 쓰면서 고칠 길이 없으면, 잘못 읽힌 옷은
           // 지우고 다시 올리는 수밖에 없다. 저장 뒤에도 고칠 수 있어야 한다.
           '<button class="btn btn--ghost btn--block item__edit" type="button" data-action="edit-item">' +
-            icon('pencil', 'ico--sm') + '<span class="btn__text">정보 수정</span>' +
+            icon('pencil', 'ico--sm') + '<span class="btn__text">情報を編集</span>' +
           '</button>' +
         '</section>' +
 
         '<section class="section">' +
           '<p class="sectionlabel">Worn In</p>' +
-          '<p class="section__sub">이 옷이 쓰인 코디' +
-            (usedIn.length ? ' ' + usedIn.length + '건' : '') + '</p>' +
+          '<p class="section__sub">このアイテムを使ったコーデ' +
+            (usedIn.length ? ' ' + usedIn.length + '件' : '') + '</p>' +
           usedInBlock +
         '</section>' +
 
@@ -1417,8 +1481,8 @@
             // 미리 말해 주지 않으면 사용자는 기록까지 지워질까 봐 못 지우거나,
             // 지운 뒤 기록에 남아 있는 것을 보고 안 지워졌다고 생각한다.
             usedIn.length
-              ? '이 옷은 코디 ' + usedIn.length + '건에 쓰였어요. 옷장에서는 사라지지만 지난 기록에는 그대로 남습니다.'
-              : '이 옷을 옷장에서 지울까요?',
+              ? 'このアイテムはコーデ ' + usedIn.length + '件 に使われています。クローゼットからは消えますが、これまでの記録には残ります。'
+              : 'このアイテムをクローゼットから削除しますか？',
             'delete-item') + '</div>' +
         '</div>' +
       '</div>';
@@ -1435,13 +1499,13 @@
   function deleteBlockHtml(question, action) {
     return '<div class="dangerzone" data-delete-block>' +
       '<button class="btn btn--quiet btn--danger-text btn--block" data-action="ask-delete" type="button">' +
-        icon('trash', 'ico--sm') + '<span class="btn__text">삭제</span></button>' +
-      '<div class="confirm" role="alertdialog" aria-label="삭제 확인" hidden>' +
+        icon('trash', 'ico--sm') + '<span class="btn__text">削除</span></button>' +
+      '<div class="confirm" role="alertdialog" aria-label="削除の確認" hidden>' +
         '<p class="confirm__q">' + esc(question) + '</p>' +
         '<div class="confirm__actions">' +
-          '<button class="btn btn--ghost btn--tiny" data-action="cancel-delete" type="button">취소</button>' +
+          '<button class="btn btn--ghost btn--tiny" data-action="cancel-delete" type="button">キャンセル</button>' +
           '<button class="btn btn--danger btn--tiny" data-action="' + esc(action) + '" type="button">' +
-            '<span class="btn__spinner" aria-hidden="true"></span><span class="btn__text">삭제</span></button>' +
+            '<span class="btn__spinner" aria-hidden="true"></span><span class="btn__text">削除</span></button>' +
         '</div>' +
       '</div>' +
     '</div>';
@@ -1450,7 +1514,7 @@
   function errorStateHtml(msg, retryId) {
     return '<div class="state state--error" role="alert">' +
       '<p class="state__title">' + esc(msg) + '</p>' +
-      '<button class="btn btn--ghost" id="' + esc(retryId) + '" type="button">다시 불러오기</button></div>';
+      '<button class="btn btn--ghost" id="' + esc(retryId) + '" type="button">読み込み直す</button></div>';
   }
 
   // 삭제 확인 토글은 상세 화면 두 곳이 함께 쓴다
@@ -1511,12 +1575,12 @@
 
     var del = e.target.closest('[data-action="delete-item"]');
     if (del) {
-      var done = busy(del, '삭제 중…');
+      var done = busy(del, '削除しています…');
       api.clothes.remove(state.item.id).then(function () {
         state.closet.loaded = false;
         state.home.loaded = false;
         state.stats.loaded = false;
-        toast('옷장에서 지웠어요.');
+        toast('クローゼットから削除しました。');
         back();
       }).catch(function (err) {
         if (isExpired(err)) return;
@@ -1620,18 +1684,18 @@
 
     show($('#history-empty'), items.length === 0);
     if (items.length === 0) {
-      $('#history-empty-title').textContent = isFav ? '즐겨찾기한 코디가 없어요' : '아직 기록이 없어요';
+      $('#history-empty-title').textContent = isFav ? 'お気に入りのコーデがありません' : 'まだ記録がありません';
       $('#history-empty-desc').textContent = isFav
-        ? '마음에 드는 코디의 하트를 누르면 여기에 모여요.'
-        : '추천을 받으면 여기에 한 장씩 쌓여요.';
+        ? '気に入ったコーデのハートを押すと、ここに集まります。'
+        : 'コーデを選んでもらうと、ここに一枚ずつ増えていきます。';
       show($('#btn-history-go-home'), !isFav);
     }
 
     show($('#history-count'), items.length > 0);
     if (items.length > 0) {
       $('#history-count').textContent = isFav
-        ? items.length + '개 즐겨찾기'
-        : (state.history.totalElements || items.length) + '개';
+        ? 'お気に入り ' + items.length + '件'
+        : (state.history.totalElements || items.length) + '件';
     }
 
     $('#history-list').innerHTML = items.map(lookHtml).join('');
@@ -1680,7 +1744,7 @@
     }).catch(function (err) {
       setFavoriteLocally(id, !next);
       if (isExpired(err)) return;
-      toast(api.isNotDeployed(err) ? '즐겨찾기는 아직 저장되지 않아요.' : humanError(err), 'error');
+      toast(api.isNotDeployed(err) ? 'お気に入りはまだ保存されません。' : humanError(err), 'error');
     });
   }
 
@@ -1716,7 +1780,7 @@
   /* ================================================================
    * 코디 상세
    * ================================================================ */
-  function openCoord(id, title) { navigate('coord', { id: id, title: title || '코디' }); }
+  function openCoord(id, title) { navigate('coord', { id: id, title: title || 'コーデ' }); }
 
   function onCoordEnter(id) {
     var host = $('#coord-detail');
@@ -1775,29 +1839,29 @@
       (hasResult
         ? '<button class="btn btn--ghost btn--block" type="button" data-action="ask-tryon-again">' +
             icon('sparkle', 'ico--sm accent') +
-            '<span class="btn__text">다시 만들기</span>' +
+            '<span class="btn__text">作り直す</span>' +
           '</button>'
         : '<button class="btn btn--primary btn--block" type="button" data-action="tryon">' +
             '<span class="btn__spinner" aria-hidden="true"></span>' +
             icon('sparkle', 'ico--sm') +
-            '<span class="btn__text">입어보기</span>' +
+            '<span class="btn__text">試着する</span>' +
           '</button>') +
-      (hasResult ? '' : '<p class="tryon__hint">등록한 전신 사진에 이 코디를 입혀 봐요.</p>') +
+      (hasResult ? '' : '<p class="tryon__hint">登録した全身写真にこのコーデを着せてみます。</p>') +
 
       // 막지는 않는다. 결과가 왜 실제와 다를 수 있는지만 미리 알려 준다.
       (noPhoto.length
-        ? '<div class="note note--warn">사진이 없는 옷(' +
-            esc(noPhoto.map(function (it) { return it.name; }).join(', ')) +
-            ')은 이름만 보고 그리기 때문에 실제와 다르게 그려질 수 있어요.</div>'
+        ? '<div class="note note--warn">写真のないアイテム（' +
+            esc(noPhoto.map(function (it) { return it.name; }).join('、')) +
+            '）は名前だけで描くため、実物と違って見えることがあります。</div>'
         : '') +
 
-      '<div class="confirm confirm--quiet" role="alertdialog" aria-label="다시 만들기 확인" data-tryon-again hidden>' +
-        '<p class="confirm__q">AI 를 한 번 더 불러 새로 만들어요. 지금 이미지는 새 이미지로 바뀝니다.</p>' +
+      '<div class="confirm confirm--quiet" role="alertdialog" aria-label="作り直しの確認" data-tryon-again hidden>' +
+        '<p class="confirm__q">AI をもう一度呼んで作り直します。今の画像は新しい画像に置き換わります。</p>' +
         '<div class="confirm__actions">' +
-          '<button class="btn btn--ghost btn--tiny" type="button" data-action="cancel-tryon-again">취소</button>' +
+          '<button class="btn btn--ghost btn--tiny" type="button" data-action="cancel-tryon-again">キャンセル</button>' +
           '<button class="btn btn--primary btn--tiny" type="button" data-action="tryon">' +
             '<span class="btn__spinner" aria-hidden="true"></span>' +
-            '<span class="btn__text">다시 만들기</span>' +
+            '<span class="btn__text">作り直す</span>' +
           '</button>' +
         '</div>' +
       '</div>' +
@@ -1806,15 +1870,15 @@
       // 착용 사진 하나만 되돌릴 수 있어야 기록을 버리지 않고 다시 시도한다.
       (hasResult
         ? '<button class="btn btn--quiet btn--danger-text btn--block" type="button" data-action="ask-del-tryon">' +
-            icon('trash', 'ico--sm') + '<span class="btn__text">이 착용 사진만 지우기</span>' +
+            icon('trash', 'ico--sm') + '<span class="btn__text">この試着画像だけ削除</span>' +
           '</button>' +
-          '<div class="confirm" role="alertdialog" aria-label="착용 사진 삭제 확인" data-del-tryon hidden>' +
-            '<p class="confirm__q">이 착용 사진만 지울까요? 코디 기록과 옷은 그대로 남아요.</p>' +
+          '<div class="confirm" role="alertdialog" aria-label="試着画像の削除確認" data-del-tryon hidden>' +
+            '<p class="confirm__q">この試着画像だけ削除しますか？コーデの記録と服はそのまま残ります。</p>' +
             '<div class="confirm__actions">' +
-              '<button class="btn btn--ghost btn--tiny" type="button" data-action="cancel-del-tryon">취소</button>' +
+              '<button class="btn btn--ghost btn--tiny" type="button" data-action="cancel-del-tryon">キャンセル</button>' +
               '<button class="btn btn--danger btn--tiny" type="button" data-action="delete-tryon">' +
                 '<span class="btn__spinner" aria-hidden="true"></span>' +
-                '<span class="btn__text">사진만 지우기</span>' +
+                '<span class="btn__text">画像だけ削除</span>' +
               '</button>' +
             '</div>' +
           '</div>'
@@ -1822,7 +1886,7 @@
 
       '<div class="progress" hidden>' +
         '<div class="progress__track"><div class="progress__fill"></div></div>' +
-        '<p class="progress__label" role="status">준비하는 중…</p>' +
+        '<p class="progress__label" role="status">準備しています…</p>' +
       '</div>' +
       '<div class="note note--error tryon__error" role="alert" hidden></div>' +
     '</div>';
@@ -1830,8 +1894,8 @@
 
   /* ---------------- 코디 상세의 사진 자리 ---------------- */
   var MEDIA_NOTE = {
-    tryon: 'AI 가 만든 이미지예요. 실제로 입은 모습이 아닙니다.',
-    items: '등록한 옷 사진 그대로예요.'
+    tryon: 'AI が作った画像です。実際に着た姿ではありません。',
+    items: '登録した服の写真そのままです。'
   };
 
   /**
@@ -1847,16 +1911,16 @@
 
     return '<div class="detail__media">' + panes +
         '<span class="pill" data-ai-pill><span class="pill__dot" aria-hidden="true"></span>' +
-          (which === 'tryon' ? 'AI 생성 이미지' : 'AI 추천') +
+          (which === 'tryon' ? 'AI生成画像' : 'AI提案') +
         '</span>' +
       '</div>' +
       (hasTryOn
         ? '<div class="mediaswitch">' +
-            '<div class="segmented" role="group" aria-label="사진 종류">' +
+            '<div class="segmented" role="group" aria-label="画像の種類">' +
               '<button class="segmented__item' + (which === 'tryon' ? ' is-active' : '') + '" type="button" ' +
-                'data-media-tab="tryon" aria-pressed="' + (which === 'tryon') + '">입어본 모습</button>' +
+                'data-media-tab="tryon" aria-pressed="' + (which === 'tryon') + '">試着した姿</button>' +
               '<button class="segmented__item' + (which === 'items' ? ' is-active' : '') + '" type="button" ' +
-                'data-media-tab="items" aria-pressed="' + (which === 'items') + '">내 옷 사진</button>' +
+                'data-media-tab="items" aria-pressed="' + (which === 'items') + '">自分の服の写真</button>' +
             '</div>' +
             '<p class="medianote" data-media-note>' + esc(MEDIA_NOTE[which]) + '</p>' +
           '</div>'
@@ -1877,7 +1941,7 @@
     var pill = $('[data-ai-pill]', host);
     if (pill) {
       pill.innerHTML = '<span class="pill__dot" aria-hidden="true"></span>' +
-        (which === 'tryon' ? 'AI 생성 이미지' : 'AI 추천');
+        (which === 'tryon' ? 'AI生成画像' : 'AI提案');
     }
     var note = $('[data-media-note]', host);
     if (note) note.textContent = MEDIA_NOTE[which] || '';
@@ -1888,12 +1952,12 @@
     if (!c) return;
     var items = sortedItems(c);
 
-    $('#topbar-title').textContent = c.title || '코디';
+    $('#topbar-title').textContent = c.title || 'コーデ';
 
     var action = $('#btn-topbar-action');
     show(action, true);
     action.dataset.favId = c.id;
-    action.setAttribute('aria-label', '즐겨찾기');
+    action.setAttribute('aria-label', 'お気に入り');
     action.setAttribute('aria-pressed', c.favorite ? 'true' : 'false');
     action.classList.toggle('is-on', !!c.favorite);
     action.innerHTML = icon(c.favorite ? 'heart-fill' : 'heart');
@@ -1916,7 +1980,7 @@
 
         '<div class="detail__col detail__col--info">' +
         '<div class="detail__head">' +
-          '<h2 class="detail__title">' + esc(c.title || '오늘의 코디') + '</h2>' +
+          '<h2 class="detail__title">' + esc(c.title || '今日のコーデ') + '</h2>' +
         '</div>' +
 
         // 그날 적어 둔 한 줄. "그때 왜 이걸 입었지" 가 보여야 기록이 뜻을 가진다.
@@ -1948,7 +2012,7 @@
                   '<div class="specrow__btn specrow__btn--static">' +
                     '<span class="specrow__label">' + esc(cat.en) + '</span>' +
                     '<span class="specrow__value">' + esc(value) +
-                      '<span class="specrow__note">옷장에서 지움</span>' +
+                      '<span class="specrow__note">クローゼットから削除済み</span>' +
                     '</span>' +
                   '</div></li>';
               }
@@ -1963,7 +2027,7 @@
           '</ul>' +
         '</section>' +
 
-        '<div class="detail__foot">' + deleteBlockHtml('이 코디를 기록에서 지울까요?', 'delete-coord') + '</div>' +
+        '<div class="detail__foot">' + deleteBlockHtml('このコーデを記録から削除しますか？', 'delete-coord') + '</div>' +
         '</div>' +
       '</div>';
 
@@ -1983,17 +2047,17 @@
 
     var del = e.target.closest('[data-action="delete-coord"]');
     if (del) {
-      var done = busy(del, '삭제 중…');
+      var done = busy(del, '削除しています…');
       api.coordinations.remove(state.coord.id).then(function () {
         state.history.loaded = false;
         state.home.loaded = false;
         state.stats.loaded = false;
-        toast('코디를 지웠어요.');
+        toast('コーデを削除しました。');
         back();
       }).catch(function (err) {
         if (isExpired(err)) return;
         done();
-        toast(api.isNotDeployed(err) ? '지금은 지울 수 없어요.' : humanError(err), 'error');
+        toast(api.isNotDeployed(err) ? '今は削除できません。' : humanError(err), 'error');
       });
       return;
     }
@@ -2004,7 +2068,7 @@
       // 사진만 올리고 끝나면 사용자는 하던 코디를 홈에서 다시 찾아 들어가야 한다.
       // 어디서 왔는지 적어 두고, 등록이 끝나면 그 자리로 되돌린다.
       var c = state.coord.data;
-      state.pendingTryOn = { id: state.coord.id, title: (c && c.title) || '코디' };
+      state.pendingTryOn = { id: state.coord.id, title: (c && c.title) || 'コーデ' };
       navigate('more');
       setTimeout(function () {
         var el = $('#body-photo-preview');
@@ -2061,7 +2125,7 @@
   function runDeleteTryOn(btn) {
     var host = $('[data-tryon]', $('#coord-detail'));
     var errEl = $('.tryon__error', host);
-    var done = busy(btn, '지우는 중…');
+    var done = busy(btn, '削除しています…');
     show(errEl, false);
 
     api.coordinations.removeTryOn(state.coord.id).then(function () {
@@ -2072,12 +2136,12 @@
       state.history.loaded = false;
       state.coord.media = 'tryon';   // 다음에 결과가 생기면 다시 그것부터 보여 준다
       renderCoord();
-      toast('착용 사진을 지웠어요. 옷 사진은 그대로예요.');
+      toast('試着画像を削除しました。服の写真はそのままです。');
     }).catch(function (err) {
       done();
       if (isExpired(err)) return;
       setNote(errEl, api.isNotDeployed(err)
-        ? '이 사진만 지우는 기능은 아직 준비 중이에요. 지금은 ‘다시 만들기’ 로 새 이미지를 만들 수 있어요.'
+        ? 'この画像だけを削除する機能はまだ準備中です。今は「作り直す」で新しい画像を作れます。'
         : humanError(err));
     });
   }
@@ -2118,12 +2182,12 @@
         if (url) {
           state.tryOnNote = null;   // 손으로 다시 만들어 성공했다. 안내는 제 몫을 다했다.
           state.home.loaded = false;
-          renderCoord();   // 블록이 통째로 다시 그려진다 → 버튼은 "다시 만들기" 가 된다
-          toast('입어본 모습을 만들었어요.');
+          renderCoord();   // 블록이 통째로 다시 그려진다 → 버튼은 "作り直す" 가 된다
+          toast('試着した姿ができました。');
         } else {
           show(progress, false);
           release();
-          setNote(errEl, '이미지를 받지 못했어요. 다시 시도해 주세요.');
+          setNote(errEl, '画像を受け取れませんでした。もう一度お試しください。');
         }
       }, 420);
     }).catch(function (err) {
@@ -2133,16 +2197,16 @@
       if (isExpired(err)) return;
 
       if (err.isApiError && err.code === 'no_body_photo') {
-        errEl.innerHTML = '<span class="note__body">입어보기를 하려면 전신 사진이 필요해요.</span>' +
-          '<button class="btn btn--tiny btn--ghost" type="button" data-action="go-body-photo">전신 사진 등록하기</button>';
+        errEl.innerHTML = '<span class="note__body">試着には全身写真が必要です。</span>' +
+          '<button class="btn btn--tiny btn--ghost" type="button" data-action="go-body-photo">全身写真を登録</button>';
         show(errEl, true);
         return;
       }
       if (err.isApiError && err.status === 503) {
         openGuide({
-          title: 'AI 가 지금 응답하지 않아요',
-          desc: '연결한 키가 아직 살아 있는지 확인해 보고, 잠시 후 다시 시도해 주세요.',
-          action: '연결 확인하러 가기'
+          title: 'AI が応答していません',
+          desc: '連携したキーが有効か確認して、しばらくしてからもう一度お試しください。',
+          action: '連携を確認しに行く'
         });
         return;
       }
@@ -2156,11 +2220,11 @@
    * 100% 는 실제 응답이 왔을 때만 찍는다.
    */
   var TRYON_STAGES = [
-    [0, '준비하는 중…'],
-    [20, '전신 사진을 살펴보는 중…'],
-    [45, '옷을 하나씩 입혀 보는 중…'],
-    [72, '마무리하는 중… 조금만 기다려 주세요'],
-    [92, '거의 다 됐어요…']
+    [0, '準備しています…'],
+    [20, '全身写真を確認しています…'],
+    [45, '服を一つずつ着せています…'],
+    [72, '仕上げています…もう少しお待ちください'],
+    [92, 'もうすぐです…']
   ];
 
   function startProgress(fillEl, labelEl, stages) {
@@ -2196,7 +2260,7 @@
         clearInterval(timer);
         held = null;
         fillEl.style.setProperty('--progress', '100%');
-        labelEl.textContent = text || '완성됐어요!';
+        labelEl.textContent = text || '完成しました！';
       }
     };
   }
@@ -2239,10 +2303,10 @@
    * 받은 것을 그대로 부으면 된다. 값이 없으면 조용히 비워 둔다.
    */
   var EXTRA_FIELDS = [
-    { key: 'subCategory', sel: '#add-subcategory', label: '세부 분류' },
-    { key: 'material',    sel: '#add-material',    label: '소재' },
-    { key: 'fit',         sel: '#add-fit',         label: '핏' },
-    { key: 'season',      sel: '#add-season',      label: '계절' }
+    { key: 'subCategory', sel: '#add-subcategory', label: '種類' },
+    { key: 'material',    sel: '#add-material',    label: '素材' },
+    { key: 'fit',         sel: '#add-fit',         label: 'シルエット' },
+    { key: 'season',      sel: '#add-season',      label: '季節' }
   ];
 
   /**
@@ -2293,12 +2357,12 @@
   function applySheetMode() {
     var editing = state.editItemId != null;
     $('#add-sheet-kicker').textContent = editing ? 'Edit Item' : 'New Item';
-    $('#add-sheet-title').textContent = editing ? '옷 정보 수정' : '옷 추가';
+    $('#add-sheet-title').textContent = editing ? 'アイテム情報の編集' : '服を追加';
     $('#add-sheet-desc').textContent = editing
-      ? 'AI 가 잘못 읽은 이름·카테고리·색을 여기서 고칠 수 있어요. 사진은 바뀌지 않아요.'
-      : '사진을 고르면 이름·카테고리·색을 자동으로 채워 드려요. 사진 없이 직접 입력해도 괜찮아요.';
+      ? 'AI が読み間違えた名前・カテゴリー・色をここで直せます。写真は変わりません。'
+      : '写真を選ぶと、名前・カテゴリー・色を自動で入力します。写真なしで直接入力しても大丈夫です。';
     show($('#add-picker'), !editing);
-    $('.btn__text', $('#btn-add-submit')).textContent = editing ? '수정 저장' : '저장';
+    $('.btn__text', $('#btn-add-submit')).textContent = editing ? '変更を保存' : '保存';
   }
 
   function closeAddSheet() {
@@ -2332,8 +2396,8 @@
     btn.disabled = !!on;
     if (on) btn.setAttribute('aria-busy', 'true');
     else btn.removeAttribute('aria-busy');
-    $('.btn__text', btn).textContent = on ? '사진 읽는 중…'
-      : (state.editItemId != null ? '수정 저장' : '저장');
+    $('.btn__text', btn).textContent = on ? '写真を読み取り中…'
+      : (state.editItemId != null ? '変更を保存' : '保存');
   }
 
   /** 분석 결과 안내. 시트 안에서는 토스트 대신 인라인 노트를 쓴다. */
@@ -2405,7 +2469,7 @@
     if (!file) return;
 
     if (file.size > MAX_UPLOAD) {
-      setNote($('#add-error'), '사진이 너무 커요. 10MB 이하로 골라 주세요.');
+      setNote($('#add-error'), '写真が大きすぎます。10MB以下で選んでください。');
       e.target.value = '';
       return;
     }
@@ -2423,7 +2487,7 @@
 
     // 연결 전이면 분석은 건너뛰고 직접 입력으로 이어 간다 (막지 않는다)
     if (state.ai.checked && !state.ai.configured) {
-      analyzeNotice('AI 연결 전이라 사진은 자동으로 읽지 못해요. 직접 입력해서 저장할 수 있어요.', 'warn');
+      analyzeNotice('AI連携がまだなので、写真は自動で読み取れません。直接入力して保存できます。', 'warn');
       $('#add-name').focus();
       return;
     }
@@ -2449,7 +2513,7 @@
             if (v && !$(f.sel).value) $(f.sel).value = String(v);
           });
           syncSeasonChips();
-          analyzeNotice('사진을 읽어 자동으로 채웠어요. 확인하고 고쳐 주세요.', 'ok');
+          analyzeNotice('写真を読み取って自動入力しました。確認して直してください。', 'ok');
         }
       })
       .catch(function (err) {
@@ -2457,8 +2521,8 @@
         if (isExpired(err)) return;
         analyzeNotice(
           err.isApiError && err.status === 503
-            ? 'AI 가 지금 응답하지 않아요. 직접 입력해서 저장할 수 있어요.'
-            : '사진을 자동으로 읽지 못했어요. 직접 입력해서 저장할 수 있어요.',
+            ? 'AI が応答していません。直接入力して保存できます。'
+            : '写真を自動で読み取れませんでした。直接入力して保存できます。',
           'warn'
         );
       })
@@ -2471,6 +2535,11 @@
       });
   });
 
+  // 이 폼은 한 줄짜리 입력칸이 여덟이다. 일본어로 옷 이름을 치고 변환을 확정하는
+  // Enter 가 곧바로 '저장'이 되면, 반쯤 쓰다 만 옷이 옷장에 들어간다.
+  guardImeSubmit($('#form-add'));
+  guardImeSubmit($('#form-key'));
+
   $('#form-add').addEventListener('submit', function (e) {
     e.preventDefault();
     var name = $('#add-name').value.trim();
@@ -2479,7 +2548,7 @@
     setNote($('#add-error'), '');
 
     if (!name) {
-      setNote($('#add-error'), '옷 이름을 적어 주세요.');
+      setNote($('#add-error'), 'アイテム名を入力してください。');
       $('#add-name').focus();
       return;
     }
@@ -2492,11 +2561,11 @@
       var lost = EXTRA_FIELDS.filter(function (f) {
         return extras[f.key] && (saved[f.key] || '') !== extras[f.key];
       }).map(function (f) { return f.label; });
-      if ((saved.detail || '') !== detail) lost.push('설명');
+      if ((saved.detail || '') !== detail) lost.push('説明');
       return lost;
     }
 
-    var done = busy($('#btn-add-submit'), '저장 중…');
+    var done = busy($('#btn-add-submit'), '保存しています…');
 
     if (state.editItemId != null) {
       var editingId = state.editItemId;
@@ -2513,19 +2582,19 @@
         state.home.loaded = false;
         state.stats.loaded = false;
         if (String(state.item.id) === String(editingId)) {
-          $('#topbar-title').textContent = updated.name || '옷';
+          $('#topbar-title').textContent = updated.name || 'アイテム';
           renderItem();
         }
-        toast('‘' + updated.name + '’ 정보를 고쳤어요.');
+        toast('「' + updated.name + '」の情報を更新しました。');
         // 서버가 아직 받지 않는 항목이 있으면 무엇이 빠졌는지 이름을 대 준다.
         var lost = droppedFields(updated);
         if (lost.length) {
-          toast(lost.join(' · ') + '은(는) 아직 저장되지 않아요. 나머지는 저장했어요.', 'error');
+          toast(lost.join('・') + ' はまだ保存されません。ほかは保存しました。', 'error');
         }
       }).catch(function (err) {
         if (isExpired(err)) return;
         setNote($('#add-error'), api.isNotDeployed(err)
-          ? '지금은 수정할 수 없어요. 잠시 후 다시 시도해 주세요.'
+          ? '今は編集できません。しばらくしてからもう一度お試しください。'
           : humanError(err));
       }).finally(done);
       return;
@@ -2539,7 +2608,7 @@
       detail: detail || null
     }, extras)).then(function (created) {
       closeAddSheet();
-      toast('‘' + created.name + '’ 을(를) 옷장에 담았어요.');
+      toast('「' + created.name + '」をクローゼットに追加しました。');
       state.home.loaded = false;
       state.closet.loaded = true;
       state.stats.loaded = false;
@@ -2615,7 +2684,7 @@
         ? '<div><p class="sectionlabel">Most Worn</p><ul class="specrows">' +
             most.map(function (m) {
               return '<li class="specrow"><span class="specrow__static">' +
-                '<span class="specrow__label">' + esc(m.usedCount) + '회</span>' +
+                '<span class="specrow__label">' + esc(m.usedCount) + '回</span>' +
                 '<span class="specrow__value">' + esc(m.name) + '</span></span></li>';
             }).join('') + '</ul></div>'
         : '');
@@ -2639,8 +2708,8 @@
 
     var hasPhoto = !!(state.user && state.user.bodyPhotoUrl);
     $('#body-photo-resume-msg').textContent = hasPhoto
-      ? '전신 사진이 준비됐어요. ‘' + p.title + '’ 으로 돌아가 입어볼 수 있어요.'
-      : '‘' + p.title + '’ 입어보기를 하려다 오셨어요. 사진을 등록하면 이어서 할 수 있어요.';
+      ? '全身写真の準備ができました。「' + p.title + '」に戻って試着できます。'
+      : '「' + p.title + '」の試着の途中でした。写真を登録すると続きから試せます。';
   }
 
   $('#btn-body-photo-resume').addEventListener('click', function () {
@@ -2667,11 +2736,11 @@
     var status = $('#body-photo-status');
 
     // 이니셜 판(NONE)은 눈으로만 읽는 자리다. 화면 낭독기에는 이 문장이 간다.
-    if (status) status.textContent = (me && me.bodyPhotoUrl) ? '전신 사진 등록됨' : '등록된 전신 사진 없음';
+    if (status) status.textContent = (me && me.bodyPhotoUrl) ? '全身写真は登録済み' : '全身写真は未登録';
     renderTryOnResume();
 
     if (me && me.bodyPhotoUrl) {
-      if (label) label.textContent = '사진 바꾸기';
+      if (label) label.textContent = '写真を変更';
       api.media.objectUrl(me.bodyPhotoUrl).then(function (url) {
         img.src = url;
         img.hidden = false;
@@ -2685,7 +2754,7 @@
       img.hidden = true;
       img.removeAttribute('src');
       ph.hidden = false;
-      if (label) label.textContent = '사진 선택';
+      if (label) label.textContent = '写真を選ぶ';
     }
   }
 
@@ -2695,7 +2764,7 @@
     setNote($('#body-photo-error'), '');
 
     if (file.size > MAX_UPLOAD) {
-      setNote($('#body-photo-error'), '사진이 너무 커요. 10MB 이하로 골라 주세요.');
+      setNote($('#body-photo-error'), '写真が大きすぎます。10MB以下で選んでください。');
       e.target.value = '';
       return;
     }
@@ -2721,8 +2790,8 @@
       if (state.tryOnNote && state.tryOnNote.kind === 'guide') state.tryOnNote = null;
       renderBodyPhoto();
       toast(state.pendingTryOn
-        ? '전신 사진을 저장했어요. 이제 입어보기로 돌아갈 수 있어요.'
-        : '전신 사진을 저장했어요.');
+        ? '全身写真を保存しました。試着に戻れます。'
+        : '全身写真を保存しました。');
       if (state.pendingTryOn) scrollIntoViewSafely($('#body-photo-resume'));
     }).catch(function (err) {
       URL.revokeObjectURL(localUrl);
@@ -2747,14 +2816,14 @@
     e.preventDefault();
     setNote($('#style-error'), '');
     var value = $('#style-input').value.trim();
-    var done = busy($('#btn-style-save'), '저장 중…');
+    var done = busy($('#btn-style-save'), '保存しています…');
 
     api.users.saveStylePreference(value || null).then(function () {
-      toast('스타일 선호도를 저장했어요.');
+      toast('好みのスタイルを保存しました。');
     }).catch(function (err) {
       if (isExpired(err)) return;
       setNote($('#style-error'), api.isNotDeployed(err)
-        ? '지금은 저장할 수 없어요. 잠시 후 다시 시도해 주세요.'
+        ? '今は保存できません。しばらくしてからもう一度お試しください。'
         : humanError(err));
     }).finally(done);
   });
@@ -2765,7 +2834,7 @@
     var shown = input.type === 'text';
     input.type = shown ? 'password' : 'text';
     this.setAttribute('aria-pressed', shown ? 'false' : 'true');
-    this.setAttribute('aria-label', shown ? '입력한 키 보기' : '입력한 키 가리기');
+    this.setAttribute('aria-label', shown ? '入力したキーを表示' : '入力したキーを隠す');
     this.innerHTML = icon(shown ? 'eye' : 'eye-off', 'ico--sm');
   });
 
@@ -2774,13 +2843,13 @@
     setNote($('#key-error'), '');
     var key = $('#key-input').value.trim();
     if (!key) {
-      setNote($('#key-error'), '받은 키를 붙여넣어 주세요.');
+      setNote($('#key-error'), '発行したキーを貼り付けてください。');
       $('#key-input').focus();
       return;
     }
 
     var wasEditing = state.ai.editing;
-    var done = busy(e.target.querySelector('button[type=submit]'), '연결 중…');
+    var done = busy(e.target.querySelector('button[type=submit]'), '連携しています…');
     api.settings.saveGeminiKey(key).then(function (res) {
       state.ai.configured = !!(res && res.configured);
       state.ai.masked = res && res.masked;
@@ -2788,11 +2857,11 @@
       state.ai.editing = false;
       $('#key-input').value = '';
       renderAiState();
-      toast(wasEditing ? '새 키로 바꿨어요.' : 'AI 연결이 끝났어요. 이제 추천을 받을 수 있어요.');
+      toast(wasEditing ? '新しいキーに変更しました。' : 'AI連携が完了しました。これでコーデを選んでもらえます。');
     }).catch(function (err) {
       if (isExpired(err)) return;
       setNote($('#key-error'), err.isApiError && err.code === 'invalid_key'
-        ? '키가 올바르지 않아요. 복사한 글자를 처음부터 끝까지 다시 붙여넣어 주세요.'
+        ? 'キーが正しくありません。コピーした文字を最初から最後まで貼り直してください。'
         : humanError(err));
     }).finally(done);
   });
@@ -2830,13 +2899,13 @@
   });
 
   $('#btn-key-remove').addEventListener('click', function () {
-    var done = busy(this, '해제 중…');
+    var done = busy(this, '解除しています…');
     api.settings.removeGeminiKey().then(function () {
       state.ai.configured = false;
       state.ai.masked = null;
       state.ai.editing = false;
       renderAiState();
-      toast('연결을 해제했어요.');
+      toast('連携を解除しました。');
     }).catch(function (err) {
       if (isExpired(err)) return;
       toast(humanError(err), 'error');
