@@ -48,3 +48,21 @@ tasks.withType<Test> {
         events("passed", "skipped", "failed")
     }
 }
+
+/**
+ * jpackage 에 넘길 입력 디렉터리를 만든다.
+ *
+ * jpackage 의 `--input` 은 **그 폴더 안의 모든 파일을 앱 안으로 복사한다.** 그래서
+ * `build/libs` 를 그대로 가리키면 실행 가능한 부트 jar 옆에 아무 쓸모 없는
+ * `-plain.jar`(클래스만 든 껍데기)까지 같이 들어간다. 넣을 것 하나만 따로 모은다.
+ *
+ * 파일 이름은 `orbit.jar` 로 고정한다. 버전이 이름에 박혀 있으면 릴리스마다 CI
+ * 스크립트의 `--main-jar` 를 같이 고쳐야 하고, 그건 잊어버리기 딱 좋은 자리다.
+ */
+tasks.register<Sync>("packagingInput") {
+    group = "distribution"
+    description = "jpackage 입력(실행 가능한 jar 하나)을 build/packaging/input 에 모은다"
+
+    from(tasks.named("bootJar")) { rename { "orbit.jar" } }
+    into(layout.buildDirectory.dir("packaging/input"))
+}
