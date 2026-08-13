@@ -152,87 +152,16 @@
    * 이메일과 비밀번호를 묻는 화면을 세워 둘 이유가 없다. 토큰이 없거나
    * 되살릴 수 없으면 서버에서 조용히 새 세션을 받아 온다.
    * ---------------------------------------------------------------- */
-  var LOCAL_ACCOUNT_KEY = 'orbit.localAccount';
   var sessionInFlight = null;
 
   /**
-   * 세션 엔드포인트가 "아직 없음"인가.
-   * 이 요청은 Authorization 을 붙이지 않으므로 401 도 "권한 없음"이 아니라
-   * "그 경로가 아직 열려 있지 않다"는 뜻이다.
+   * 세션 발급. 이 앱은 한 사람이 자기 기기에서만 쓰므로 로그인 화면이 없다.
+   * 서버가 주인 계정의 토큰을 자격증명 없이 내준다(`POST /api/auth/session`).
+   * 서버는 127.0.0.1 에만 바인딩되어 있고, 그 판단의 근거와 대가는 서버 쪽
+   * README 에 적혀 있다.
    */
-  function sessionMissing(err) {
-    if (!err || !err.isApiError) return false;
-    return err.status === 401 || err.status === 404 || err.status === 405 || err.status === 501;
-  }
-
-  /** 무작위 문자열. 자격증명을 소스에 적어 두지 않기 위한 것이다. */
-  function randomTag() {
-    var bytes = new Uint8Array(18);
-    (global.crypto || global.msCrypto).getRandomValues(bytes);
-    return Array.prototype.map.call(bytes, function (b) {
-      return ('0' + b.toString(16)).slice(-2);
-    }).join('');
-  }
-
-  /**
-   * 임시 안전장치용 로컬 계정 — 서버에 아직 `POST /api/auth/session` 이 없을 때만 쓴다.
-   *
-   * 계정은 이 사용자에게 아무 뜻도 없는 부품이라 화면에 묻지 않고 여기서 만든다.
-   * 소스에 적어 두면 그건 그냥 공개된 자격증명이므로, 처음 한 번 만들어 이 브라우저에
-   * 보관한다. 서버가 세션 엔드포인트를 열면 이 길은 한 번도 지나지 않는다.
-   */
-  function storedAccount() {
-    try {
-      var saved = JSON.parse(localStorage.getItem(LOCAL_ACCOUNT_KEY) || 'null');
-      if (saved && saved.email && saved.password) return saved;
-    } catch (e) { /* 못 읽으면 없는 것으로 본다 */ }
-    return null;
-  }
-
-  function createAccount() {
-    var tag = randomTag();
-    var account = { email: 'owner-' + tag.slice(0, 12) + '@orbit.local', password: tag };
-    try { localStorage.setItem(LOCAL_ACCOUNT_KEY, JSON.stringify(account)); } catch (e) { /* noop */ }
-    return account;
-  }
-
-  /**
-   * allowCreate 는 **처음 켤 때만** 참이다.
-   *
-   * 쓰던 세션이 끊긴 자리에서 새 계정을 만들어 버리면, 사용자는 아무 말도 없이
-   * 텅 빈 옷장 앞에 서고 지금까지의 기록은 남의 계정에 남는다. 잃을 것이 없는
-   * 첫 실행에서만 계정을 만들고, 그 밖에는 차라리 실패를 보여 준다.
-   */
-  function localSession(allowCreate) {
-    var account = storedAccount();
-    if (!account) {
-      if (!allowCreate) return Promise.reject(ApiError(401, { error: 'session_expired' }));
-      account = createAccount();
-    }
-    function login() {
-      return rawRequest('/api/auth/login', {
-        method: 'POST', auth: false,
-        json: { email: account.email, password: account.password }
-      });
-    }
-    return login().catch(function (err) {
-      // 아직 그 계정이 없다. 한 번 만들고 다시 들어간다.
-      var absent = err.isApiError && (err.status === 400 || err.status === 401 ||
-        err.code === 'invalid_credentials');
-      if (!absent) throw err;
-      return rawRequest('/api/auth/signup', {
-        method: 'POST', auth: false,
-        json: { email: account.email, password: account.password, displayName: '' }
-      }).then(login);
-    });
-  }
-
-  function issueSession(allowCreate) {
+  function issueSession() {
     return rawRequest('/api/auth/session', { method: 'POST', auth: false })
-      .catch(function (err) {
-        if (!sessionMissing(err)) throw err;
-        return localSession(allowCreate);
-      })
       .then(function (data) {
         if (!data || !data.accessToken) throw ApiError(502, { error: 'no_session' });
         tokens.save(data);
@@ -242,8 +171,7 @@
 
   /**
    * 여러 요청이 한꺼번에 세션을 찾아도 발급은 한 번만.
-   * force 는 "쓰던 세션이 끊겨서 다시 받는 길"이라는 뜻이고,
-   * 그때는 계정을 새로 만들지 않는다(위 localSession 주석).
+   * force 는 "쓰던 세션이 끊겨서 다시 받는 길"이라는 뜻이다.
    */
   function ensureSession(force) {
     if (!force && tokens.exists()) return Promise.resolve(null);
