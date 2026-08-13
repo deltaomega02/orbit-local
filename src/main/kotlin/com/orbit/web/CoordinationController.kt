@@ -26,6 +26,15 @@ data class CoordinationItemResponse(
     val mainCategory: MainCategory,
     val layerOrder: Int,
     val imageUrl: String?,
+    /**
+     * 이 옷이 아직 옷장에 있는가.
+     *
+     * 옷을 지워도 과거 코디에는 "그때 입은 옷"으로 남는다(소프트 삭제). 그런데 서버가
+     * 그 사실을 알려주지 않으면 화면은 지워진 옷에도 상세 링크를 걸고, 누르면 404 로
+     * 빠져 되돌아올 수 없는 막다른 화면이 된다. 실제로 그랬다.
+     * 화면은 이 값이 false 면 링크를 걸지 않고 "옷장에서 지움"으로 표시한다.
+     */
+    val inWardrobe: Boolean,
 )
 
 data class CoordinationResponse(
@@ -53,6 +62,7 @@ data class CoordinationResponse(
                     mainCategory = it.clothes.mainCategory,
                     layerOrder = it.layerOrder,
                     imageUrl = mediaUrl(it.clothes.imagePath),
+                    inWardrobe = it.clothes.deletedAt == null,
                 )
             },
             tryOnImageUrl = mediaUrl(c.tryOnImagePath),

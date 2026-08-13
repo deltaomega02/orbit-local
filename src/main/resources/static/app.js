@@ -828,7 +828,7 @@
 
     if (items.length > 0) {
       $('#closet-count').textContent = state.closet.filter === 'ALL'
-        ? state.closet.totalElements + ' items'
+        ? state.closet.totalElements + '벌'
         : items.length + ' ' + catOf(state.closet.filter).en.toLowerCase();
     }
 
@@ -943,7 +943,14 @@
           usedInBlock +
         '</section>' +
 
-        '<div class="detail__foot">' + deleteBlockHtml('이 옷을 옷장에서 지울까요?', 'delete-item') + '</div>' +
+        '<div class="detail__foot">' + deleteBlockHtml(
+            // 이미 코디에 쓰인 옷은 지워도 기록에서 사라지지 않는다. 그 사실을
+            // 미리 말해 주지 않으면 사용자는 기록까지 지워질까 봐 못 지우거나,
+            // 지운 뒤 기록에 남아 있는 것을 보고 안 지워졌다고 생각한다.
+            usedIn.length
+              ? '이 옷은 코디 ' + usedIn.length + '건에 쓰였어요. 옷장에서는 사라지지만 지난 기록에는 그대로 남습니다.'
+              : '이 옷을 옷장에서 지울까요?',
+            'delete-item') + '</div>' +
       '</div>';
 
     hydrateImages($('#item-detail'));
@@ -1118,8 +1125,8 @@
     show($('#history-count'), items.length > 0);
     if (items.length > 0) {
       $('#history-count').textContent = isFav
-        ? items.length + ' favorites'
-        : (state.history.totalElements || items.length) + ' looks';
+        ? items.length + '개 즐겨찾기'
+        : (state.history.totalElements || items.length) + '개';
     }
 
     $('#history-list').innerHTML = items.map(lookHtml).join('');
@@ -1284,6 +1291,18 @@
             items.map(function (it) {
               var cat = catOf(it.mainCategory);
               var value = it.name + (it.color ? ' (' + it.color + ')' : '');
+              // 옷장에서 지운 옷은 코디에 그대로 남지만 상세 화면이 없다.
+              // 링크를 걸면 눌렀을 때 되돌아올 수 없는 오류 화면으로 빠지므로,
+              // 누를 수 없는 줄로 그리고 왜 못 누르는지 함께 적는다.
+              if (it.inWardrobe === false) {
+                return '<li class="specrow specrow--gone">' +
+                  '<div class="specrow__btn specrow__btn--static">' +
+                    '<span class="specrow__label">' + esc(cat.en) + '</span>' +
+                    '<span class="specrow__value">' + esc(value) +
+                      '<span class="specrow__note">옷장에서 지움</span>' +
+                    '</span>' +
+                  '</div></li>';
+              }
               return '<li class="specrow">' +
                 '<button class="specrow__btn" type="button" data-clothes-id="' + esc(it.clothesId) + '" ' +
                         'data-clothes-name="' + esc(it.name) + '">' +
