@@ -32,6 +32,13 @@ data class UpdateClothesRequest(
     @field:Size(min = 1, max = 60) val name: String? = null,
     val mainCategory: MainCategory? = null,
     @field:Size(max = 30) val color: String? = null,
+    /**
+     * 소재·핏. 사진 분석이 채워 주는 값이라 **틀렸을 때 고칠 수 있어야 한다.**
+     * 이것만 수정에서 빠져 있으면, AI 가 잘못 적어 넣은 문장을 사용자가
+     * 지우고 다시 등록하는 수밖에 없다.
+     * null = 그대로 두기, 빈 문자열 = 지우기. color 와 같은 규칙이다.
+     */
+    @field:Size(max = 200) val detail: String? = null,
 )
 
 data class ClothesResponse(
@@ -274,7 +281,9 @@ class ClothesController(
         @PathVariable id: Long,
         @Valid @RequestBody request: UpdateClothesRequest,
     ): ClothesResponse =
-        ClothesResponse.from(service.update(user.id, id, request.name, request.mainCategory, request.color))
+        ClothesResponse.from(
+            service.update(user.id, id, request.name, request.mainCategory, request.color, request.detail),
+        )
 
     @DeleteMapping("/{id}")
     fun delete(

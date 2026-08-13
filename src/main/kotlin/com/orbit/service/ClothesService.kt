@@ -89,12 +89,20 @@ class ClothesService(
     fun get(ownerId: Long, id: Long): Clothes = findOwned(ownerId, id)
 
     @Transactional
-    fun update(ownerId: Long, id: Long, name: String?, mainCategory: MainCategory?, color: String?): Clothes {
+    fun update(
+        ownerId: Long,
+        id: Long,
+        name: String?,
+        mainCategory: MainCategory?,
+        color: String?,
+        detail: String? = null,
+    ): Clothes {
         val clothes = findOwned(ownerId, id)
         // PATCH 이므로 null 은 "변경 없음"이다. 색을 지우려면 빈 문자열을 보낸다.
         name?.let { clothes.name = it.trim() }
         mainCategory?.let { clothes.mainCategory = it }
         color?.let { clothes.color = it.trim().ifEmpty { null } }
+        detail?.let { clothes.detail = it.trim().ifEmpty { null } }
         return clothes // 더티 체킹으로 반영된다
     }
 
