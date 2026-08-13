@@ -57,6 +57,37 @@ class OrbitEnvironmentPostProcessor : EnvironmentPostProcessor, Ordered {
         }
 
         environment.propertySources.addLast(MapPropertySource(SOURCE_NAME, defaults))
+
+        installDesktopJwtSecret(environment)
+    }
+
+    /**
+     * 설치본에서는 JWT 시크릿을 **반드시 이 기기의 것**으로 만든다.
+     *
+     * 원래 의도는 바로 위 블록이 처리하는 것이었는데, 실제로는 한 번도 걸리지 않았다.
+     * `application.yml` 이 `${ORBIT_JWT_SECRET:dev-only-insecure-secret-…}` 로 **항상**
+     * 값을 채우기 때문에 "설정되어 있지 않은가"가 영원히 거짓이고, 그래서 배포되는
+     * 모든 설치본이 저장소에 그대로 적혀 있는 같은 시크릿을 쓰게 된다.
+     * (설치본을 실제로 띄워 `jwt.key` 가 만들어지지 않는 것을 보고 찾았다)
+     *
+     * 로컬 전용 앱이라 피해가 크지는 않다 — 서버는 루프백에만 열려 있고, 같은 기기의
+     * 프로세스라면 어차피 `POST /api/auth/session` 으로 정식 토큰을 받을 수 있다.
+     * 그래도 "기기마다 다른 값을 한 번 만들어 둔다"고 적어 놓은 것이 사실이 아닌
+     * 상태로 물건을 넘길 이유는 없다.
+     *
+     * [addFirst] 를 쓰는 이유는 이 값이 이겨야 할 상대가 `application.yml` 의 개발용
+     * 기본값이기 때문이다. 다만 **환경변수로 시크릿을 직접 준 경우는 손대지 않는다** —
+     * 그건 사람이 의도해서 넣은 값이다.
+     *
+     * 데스크톱 모드에서만 돈다. 테스트와 `bootRun` 의 동작은 예전 그대로다.
+     */
+    private fun installDesktopJwtSecret(environment: ConfigurableEnvironment) {
+        if (!DesktopRuntime.enabled) return
+        if (!System.getenv("ORBIT_JWT_SECRET").isNullOrBlank()) return
+
+        environment.propertySources.addFirst(
+            MapPropertySource(DESKTOP_SOURCE_NAME, mapOf("orbit.jwt.secret" to readOrCreateJwtSecret())),
+        )
     }
 
     /**
@@ -101,5 +132,6 @@ class OrbitEnvironmentPostProcessor : EnvironmentPostProcessor, Ordered {
 
     private companion object {
         const val SOURCE_NAME = "orbitRuntimeDefaults"
+        const val DESKTOP_SOURCE_NAME = "orbitDesktopSecrets"
     }
 }
