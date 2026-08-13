@@ -103,6 +103,26 @@ class Clothes(
 @Table(
     name = "coordination",
     indexes = [Index(name = "ix_coordination_owner_created", columnList = "owner_id,created_at")],
+    /*
+     * 사용자별 LOOK 번호는 **DB 가 지키는 불변식**이다.
+     *
+     * 번호 부여는 "지금까지 발급한 최대값 + 1" 이라, 읽고 쓰는 사이에 다른 요청이
+     * 끼면 같은 번호가 두 번 나온다. 추천이 중복 조합으로 409 를 받고 곧바로
+     * 재시도하는 흐름이 실제로 있어서, 짧은 간격의 연속 생성은 가정이 아니라
+     * 정상 동작이다. "단일 사용자 로컬 앱이라 아마 안 겹칠 것"에 기대면 겹쳤을 때
+     * 아무도 모르고 지나가고, 화면에는 LOOK 007 이 두 개 뜬다.
+     *
+     * 그래서 겹침을 막는 책임을 애플리케이션이 아니라 제약에 둔다. 애플리케이션
+     * 로직(락·재시도)은 "겹치지 않게 하려는 노력"이고, 이 제약은 "겹치면 반드시
+     * 실패한다"는 보장이다. 앞의 것이 언젠가 틀려도 뒤의 것은 틀리지 않는다.
+     *
+     * `look_no` 가 nullable 인 것과 충돌하지 않는다 — H2·MySQL 모두 유니크 제약에서
+     * NULL 은 서로 다른 값으로 보므로, 마이그레이션 전의 기존 행이 여럿 NULL 이어도
+     * 제약을 걸 수 있다. (자세한 사정은 아래 lookNo 주석)
+     */
+    uniqueConstraints = [
+        UniqueConstraint(name = "uq_coordination_owner_look_no", columnNames = ["owner_id", "look_no"]),
+    ],
 )
 class Coordination(
     @Column(name = "owner_id", nullable = false)
@@ -125,6 +145,34 @@ class Coordination(
 
     @Column(name = "created_at", nullable = false, updatable = false)
     val createdAt: Instant = Instant.now()
+
+    /**
+     * 화면이 보여주는 `LOOK 014` 의 그 번호. **사용자별 순번이고, 생성 시점에 정해져
+     * 이후 절대 바뀌지 않는다.**
+     *
+     * 왜 저장하는가. 이전에는 화면이 DB 의 id 를 세 자리로 채워서 만들고 있었는데
+     * 두 가지가 틀렸다. (1) id 는 전역 시퀀스라 사용자가 둘만 돼도 내 첫 코디가
+     * LOOK 037 로 시작한다. (2) 계산해서 만드는 번호(예: 목록에서의 순서)는 앞의
+     * 코디를 지우는 순간 뒤의 번호가 통째로 밀린다 — 어제 본 LOOK 005 가 오늘
+     * LOOK 004 가 되는 기록 앱은 기록 앱이 아니다. 저장된 값이어야 안 밀린다.
+     *
+     * **구멍(004 / 003 / 001)은 그대로 둔다.** 지운 번호를 다시 쓰면 "LOOK 002" 가
+     * 가리키는 대상이 바뀐다. 사용자가 스크린샷을 남기거나 "2번 코디 좋았는데"라고
+     * 기억하는 곳에서, 번호가 조용히 다른 코디를 가리키는 것은 번호가 하나 비는
+     * 것보다 훨씬 나쁘다. QA 가 지적한 "002 어디 갔지?" 는 사실 정확한 독해다 —
+     * 002 는 있었고 사용자가 지웠다. 빈 번호는 삭제의 흔적이지 결함이 아니다.
+     * (그래서 [LookCounter] 가 발급 이력을 따로 기억한다. 남아 있는 코디의
+     *  최대값 + 1 로 계산하면 마지막 코디를 지웠을 때 그 번호가 재사용된다.)
+     *
+     * 왜 nullable 인가. 이미 데이터가 쌓인 상태에서 컬럼이 추가되므로 기존 행에는
+     * 값이 없다. `not null` 로 만들면 그 ALTER 자체가 실패한다(기본값을 줘도 —
+     * 모든 기존 행이 같은 값이 되어 위 유니크 제약을 위반한다). 그래서 컬럼은
+     * nullable 로 두고, 값은 [com.orbit.service.LookNumberBackfill] 이 기동 시
+     * 생성 시각 순서대로 채운다. 새로 만들어지는 코디는 언제나 값을 갖는다 —
+     * 부여 지점이 [com.orbit.service.CoordinationCreator.createOnce] 하나뿐이다.
+     */
+    @Column(name = "look_no")
+    var lookNo: Int? = null
 
     /**
      * 가상 착용 이미지 경로. 한 번 생성되면 다시 만들지 않는다(멱등).
@@ -159,6 +207,35 @@ class Coordination(
     /** 이 코디가 담고 있는 의류 id 집합. 중복 판정의 기준값이다. */
     fun clothesIdSet(): Set<Long> = mutableItems.mapNotNull { it.clothes.id }.toSet()
 }
+
+/**
+ * 사용자별 LOOK 번호 발급 이력. 행 하나에 사용자 하나.
+ *
+ * **왜 테이블을 하나 더 두는가.** 다음 번호를 `max(look_no) + 1` 로 계산하면 마지막
+ * 코디를 지웠을 때 그 번호가 곧바로 재사용된다 — LOOK 003 을 지우고 새로 만들면
+ * 새 코디가 다시 LOOK 003 이 된다. 코디는 물리 삭제되므로 지워진 번호는 코디
+ * 테이블에 흔적이 남지 않고, 그래서 "지금까지 몇 번까지 나갔는가"는 따로 기억하는
+ * 수밖에 없다. 이 행이 그 기억이다. 값은 단조 증가만 하고 삭제로 줄지 않는다.
+ *
+ * **왜 [User] 에 컬럼으로 붙이지 않았는가.** 이 저장소는 의도적으로 코디·의류에서
+ * User 로 FK 를 걸지 않고 id 값으로만 참조한다(파일 위쪽 주석). 번호 발급을 User
+ * 행에 의존시키면 "코디를 만들려면 users 행이 있어야 한다"는 결합이 새로 생긴다.
+ * 소유자 id 를 키로 하는 별도 행이면 지금의 참조 규칙을 그대로 따른다.
+ *
+ * PK 가 소유자 id 다 — 사용자당 한 행뿐이라 대리 키를 둘 이유가 없고, PK 자체가
+ * "사용자당 하나"를 강제한다.
+ */
+@Entity
+@Table(name = "look_counter")
+class LookCounter(
+    @Id
+    @Column(name = "owner_id")
+    val ownerId: Long,
+
+    /** 이 사용자에게 마지막으로 발급한 번호. 0 이면 아직 하나도 안 나갔다. */
+    @Column(name = "last_look_no", nullable = false)
+    var lastLookNo: Int = 0,
+)
 
 /**
  * 코디-의류 N:M 중간 엔티티.

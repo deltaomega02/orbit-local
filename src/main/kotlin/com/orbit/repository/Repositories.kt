@@ -4,10 +4,13 @@ import com.orbit.domain.Clothes
 import com.orbit.domain.Coordination
 import com.orbit.domain.MainCategory
 import com.orbit.domain.CoordinationItem
+import com.orbit.domain.LookCounter
 import com.orbit.domain.User
+import jakarta.persistence.LockModeType
 import org.springframework.data.domain.Page
 import org.springframework.data.domain.Pageable
 import org.springframework.data.jpa.repository.JpaRepository
+import org.springframework.data.jpa.repository.Lock
 import org.springframework.data.jpa.repository.Modifying
 import org.springframework.data.jpa.repository.Query
 import org.springframework.data.repository.query.Param
@@ -75,6 +78,30 @@ interface ClothesRepository : JpaRepository<Clothes, Long> {
         """,
     )
     fun countByCategory(@Param("ownerId") ownerId: Long): List<Array<Any>>
+}
+
+/**
+ * LOOK 번호 발급 이력([LookCounter]).
+ *
+ * 조회 메서드가 하나뿐이고 그것도 쓰기 락을 건다. 이 행은 "읽어서 보여주는" 값이
+ * 아니라 "읽고 곧바로 늘리는" 값이라, 락 없이 읽을 이유가 없기 때문이다.
+ */
+interface LookCounterRepository : JpaRepository<LookCounter, Long> {
+
+    /**
+     * 번호를 발급하려고 행을 잠근 채 읽는다(`select ... for update`).
+     *
+     * 낙관적 재시도만으로도 유니크 제약이 겹침을 막아 주지만, 그건 "겹치면 실패시킨다"
+     * 이지 "겹치지 않게 한다"가 아니다. 짧은 간격의 연속 생성(추천 → 409 → 재시도)에서
+     * 매번 제약 위반과 롤백을 거치게 두면, 정상 흐름이 예외 경로를 타게 된다.
+     * 행 락을 걸면 두 번째 요청은 실패하는 대신 **기다렸다가** 다음 번호를 받는다.
+     * 제약과 재시도는 그 뒤를 받치는 안전망으로 남는다.
+     *
+     * 락 범위가 사용자 한 명의 카운터 행이라, 다른 사용자의 생성은 막지 않는다.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select c from LookCounter c where c.ownerId = :ownerId")
+    fun findForUpdate(@Param("ownerId") ownerId: Long): LookCounter?
 }
 
 interface CoordinationItemRepository : JpaRepository<CoordinationItem, Long> {
@@ -232,6 +259,41 @@ interface CoordinationRepository : JpaRepository<Coordination, Long> {
 
     /** `/media/…` 소유권 검사용. */
     fun existsByOwnerIdAndTryOnImagePath(ownerId: Long, tryOnImagePath: String): Boolean
+
+    /*
+     * ── LOOK 번호 관련 ──
+     */
+
+    /**
+     * 이 사용자의 코디 중 가장 큰 LOOK 번호. 하나도 없으면 null.
+     *
+     * 번호 발급의 기준값은 [LookCounter] 지만, 발급 직전에 이 값과 큰 쪽을 취한다.
+     * 카운터가 어떤 이유로든 실제보다 뒤처져 있으면(마이그레이션이 도중에 끊겼다든가,
+     * 누군가 DB 에 직접 행을 넣었다든가) 이미 쓰인 번호를 다시 발급하게 되는데,
+     * 그건 유니크 제약에 걸려 생성 자체가 실패하는 상태가 된다 — 재시도해도 계속.
+     * 큰 쪽을 취하면 그런 어긋남이 다음 발급 한 번으로 저절로 복구된다.
+     */
+    @Query("select max(c.lookNo) from Coordination c where c.ownerId = :ownerId")
+    fun findMaxLookNo(@Param("ownerId") ownerId: Long): Int?
+
+    /** 마이그레이션 대상. LOOK 번호가 없는 행을 가진 사용자들. */
+    @Query("select distinct c.ownerId from Coordination c where c.lookNo is null")
+    fun findOwnerIdsWithoutLookNo(): List<Long>
+
+    /**
+     * 번호가 없는 코디를 **생성 시각 순**으로. 화면이 "먼저 만든 코디가 더 작은 번호"를
+     * 뜻하는 값으로 이 번호를 읽으므로, 소급해서 매기는 번호도 그 순서를 따라야 한다.
+     * 같은 시각이면 id 로 가른다 — 정렬이 흔들리면 마이그레이션을 다시 돌렸을 때
+     * 번호가 달라진다.
+     */
+    @Query(
+        """
+        select c from Coordination c
+        where c.ownerId = :ownerId and c.lookNo is null
+        order by c.createdAt asc, c.id asc
+        """,
+    )
+    fun findWithoutLookNo(@Param("ownerId") ownerId: Long): List<Coordination>
 
     /**
      * 가상 착용 이미지 경로만 갱신한다.

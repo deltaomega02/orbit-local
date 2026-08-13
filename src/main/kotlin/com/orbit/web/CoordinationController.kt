@@ -39,6 +39,18 @@ data class CoordinationItemResponse(
 
 data class CoordinationResponse(
     val id: Long,
+    /**
+     * 화면에 `LOOK 014` 로 찍히는 번호. **사용자별 순번이며 생성 시 정해져 바뀌지 않는다.**
+     *
+     * 이 필드가 따로 있는 이유는 화면이 [id] 를 세 자리로 채워 번호를 만들고 있었기
+     * 때문이다. id 는 전역 시퀀스라 사용자가 둘이면 내 첫 코디가 LOOK 037 이 되고,
+     * 애초에 사용자에게 보여줄 뜻을 가진 값이 아니다. 표시용 번호는 서버가 저장해
+     * 내려준다 — 화면이 목록 순서나 id 로 다시 계산하면 코디를 지웠을 때 번호가 밀린다.
+     *
+     * 번호는 **비어 있을 수 있다**(1, 3, 4 …). 지운 코디의 번호는 다시 쓰지 않는다.
+     * 근거는 [com.orbit.domain.Coordination.lookNo] 주석에 적어 뒀다.
+     */
+    val lookNo: Int,
     val title: String,
     /** AI 추천이면 추천 이유, 수동 생성이면 null. */
     val reason: String?,
@@ -52,6 +64,10 @@ data class CoordinationResponse(
     companion object {
         fun from(c: Coordination) = CoordinationResponse(
             id = requireNotNull(c.id),
+            // 저장된 코디에는 번호가 반드시 있다. 부여 지점이 생성 트랜잭션 하나뿐이고,
+            // 그 이전에 만들어진 행은 기동 시 LookNumberBackfill 이 채운다. 그래도 null 이면
+            // 둘 중 하나가 깨진 것이므로, 0 이나 id 로 얼버무리지 않고 여기서 드러낸다.
+            lookNo = requireNotNull(c.lookNo) { "LOOK 번호가 없는 코디입니다: ${c.id}" },
             title = c.title,
             reason = c.reason,
             createdAt = c.createdAt,
