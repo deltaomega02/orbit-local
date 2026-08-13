@@ -4,7 +4,6 @@ import com.drew.imaging.ImageMetadataReader
 import com.drew.metadata.exif.ExifDirectoryBase
 import com.drew.metadata.exif.ExifIFD0Directory
 import com.fasterxml.jackson.databind.ObjectMapper
-import com.orbit.media.ImageTooLargeException
 import com.orbit.media.ImageType
 import com.orbit.media.MediaProperties
 import com.orbit.media.MediaStorage
@@ -226,71 +225,63 @@ class ImageNormalizationTest {
         assertEquals(0, alpha, "투명했던 자리가 불투명해졌다 — 누끼 사진이 검게 변하는 상태다")
     }
 
-    // ── 안전선 ────────────────────────────────────────────────────
+    // ── 크기 ──────────────────────────────────────────────────────
 
     /**
-     * 40MB 는 사용자를 막는 값이 아니라 "이 이상은 사진이 아니다"를 거르는 선이다.
-     * (테스트 컨텍스트는 2MB 로 낮춰 두고 그 선이 실제로 동작하는지만 본다)
+     * **크기로는 거절하지 않는다.**
+     *
+     * 여기에는 "상한을 넘으면 413" 을 고정하는 테스트가 있었다. 상한을 8MB 에서
+     * 40MB 로 올린 뒤에도 그 선을 넘는 사진이 또 나왔고, 결국 숫자를 고르는 일
+     * 자체가 틀린 문제였다. 사용자는 자기 사진이 몇 MB 인지 모르고, 알아도 줄이는
+     * 방법을 모른다.
+     *
+     * 그래서 규칙이 반대로 뒤집혔다. 큰 파일은 받아서 줄인다.
      */
     @Test
-    fun `상한을 넘으면 413 이고 안내 문구는 일본어다`() {
-        val oversized = photoJpeg(64, 64) + ByteArray(2_200_000)
+    fun `바이트가 아무리 커도 거절하지 않고 받아서 줄인다`() {
+        // 테스트 컨텍스트의 옛 상한(2MB)을 훌쩍 넘기는 파일. 뒤에 붙인 쓰레기는
+        // JPEG 디코더가 무시한다 — 여기서 보려는 것은 "크기 때문에 막히는가" 뿐이다.
+        val huge = photoJpeg(64, 64) + ByteArray(5_000_000)
 
-        val body = upload(oversized)
-            .andExpect(status().isPayloadTooLarge)
-            .andExpect(jsonPath("$.error").value("image_too_large"))
-            .andReturn().response.contentAsString
+        upload(huge).andExpect(status().isCreated)
+    }
 
-        val detail = api.json(body)["detail"] as String
-        // 예전 문구는 `画像の上限は8388608バイトです` 였다. 바이트 수는 사용자가 자기
-        // 사진과 비교할 수 있는 단위가 아니다.
-        assertTrue(detail.contains("2MB"), "상한을 사람이 읽는 단위로 말해야 한다: $detail")
+    /**
+     * 픽셀 수도 거절 사유가 아니다.
+     *
+     * 8000×8000(6400만 픽셀)은 32비트로 펼치면 256MB 라, 예전에는 힙을 지키려고
+     * 413 으로 돌려보냈다. 지금은 건너뛰며 읽어서(ImageNormalizer.decodeBounded)
+     * 메모리를 넘기지 않고 처리한다. 사용자 입장에서 "왜 안 되는지 모를 거절"이
+     * 하나 사라진다.
+     */
+    @Test
+    fun `해상도가 아무리 높아도 받아서 줄인다`() {
+        val bomb = encodePng(BufferedImage(8000, 8000, BufferedImage.TYPE_BYTE_GRAY))
+
+        val bytes = storedBytesOf(upload(bomb, "bomb.png", "image/png").andExpect(status().isCreated))
+
+        // 받기만 하고 끝나면 의미가 없다. 저장본이 실제로 상한(긴 변) 안으로
+        // 들어왔는지까지 본다.
+        val stored = checkNotNull(ImageIO.read(java.io.ByteArrayInputStream(bytes)))
+        assertTrue(
+            maxOf(stored.width, stored.height) <= mediaProperties.maxEdge,
+            "저장본이 줄지 않았다: ${stored.width}x${stored.height}",
+        )
+    }
+
+    /**
+     * 상한을 걸지 않아도 컨테이너가 끊는 경로 자체는 남겨 둔다. 누군가 다시 상한을
+     * 걸었을 때 사용자가 JSON 대신 톰캣 기본 오류 페이지를 보면 안 된다.
+     */
+    @Test
+    fun `컨테이너가 끊은 경우에도 일본어 JSON 으로 답한다`() {
+        val handler = ApiExceptionHandler()
+
+        val response = handler.handleMaxUpload(MaxUploadSizeExceededException(1))
+
+        val detail = checkNotNull(response.body).detail
         assertTrue(JAPANESE.matcher(detail).find(), "안내 문구가 일본어가 아니다: $detail")
         assertTrue(!KOREAN.matcher(detail).find(), "사용자에게 한국어가 새어 나갔다: $detail")
-    }
-
-    /**
-     * 상한을 넘는 요청은 **거의 항상 컨테이너(Tomcat)가 먼저 끊는다** — 두 상한이 같은
-     * 값이라 애플리케이션까지 오지 않는다. 그래서 위 테스트가 통과해도 사용자가 그
-     * 문구를 본다는 보장은 없다. 실제로 서버를 띄워 확인해 보니 사용자가 받는 것은
-     * 상한을 말하지 않는 다른 문장이었다. 두 경로가 같은 안내를 주는지 여기서 본다.
-     *
-     * MockMvc 는 컨테이너의 multipart 파싱을 거치지 않아 이 예외를 만들 수 없으므로,
-     * 핸들러를 직접 부른다.
-     */
-    @Test
-    fun `컨테이너가 먼저 끊어도 사용자는 같은 안내를 받는다`() {
-        val handler = ApiExceptionHandler(MediaProperties(maxFileSize = DataSize.ofMegabytes(40)))
-
-        val fromApp = handler.handleImageTooLarge(ImageTooLargeException(DataSize.ofMegabytes(40).toBytes()))
-        val fromContainer = handler.handleMaxUpload(MaxUploadSizeExceededException(DataSize.ofMegabytes(40).toBytes()))
-
-        assertEquals(fromApp.body, fromContainer.body, "어느 층이 끊었는지는 사용자의 관심사가 아니다")
-        val detail = checkNotNull(fromContainer.body).detail
-        assertTrue(detail.contains("40MB"), "몇 MB 까지 되는지 말해야 한다: $detail")
-        assertTrue(JAPANESE.matcher(detail).find(), "안내 문구가 일본어가 아니다: $detail")
-    }
-
-    /**
-     * 바이트 상한과 **다른 축**의 방어다. 잘 압축된 PNG 는 2MB 로도 수천만 픽셀이 될
-     * 수 있고, 디코드하면 픽셀 버퍼만 수 GB 라 설치본의 힙(-Xmx)을 그냥 넘긴다.
-     * 상한을 8MB 에서 40MB 로 연 지금 이 방어가 없으면 사진 한 장으로 서버가 죽는다.
-     */
-    @Test
-    fun `해상도가 픽셀 상한을 넘으면 413 으로 거절하고 문구를 따로 준다`() {
-        // 8000×8000 = 6400만 픽셀로 상한(5000만)을 넘는다. 단색이라 PNG 로는 수십 KB 밖에
-        // 안 되지만, 32비트로 디코드하면 256MB 다 — 바이트 상한이 못 보는 축이다.
-        val bomb = encodePng(BufferedImage(8000, 8000, BufferedImage.TYPE_BYTE_GRAY))
-        assertTrue(bomb.size < mediaProperties.maxFileSize.toBytes(), "바이트 상한은 통과하는 파일이어야 한다")
-
-        val body = upload(bomb, "bomb.png", "image/png")
-            .andExpect(status().isPayloadTooLarge)
-            .andExpect(jsonPath("$.error").value("image_too_large"))
-            .andReturn().response.contentAsString
-
-        val detail = api.json(body)["detail"] as String
-        assertTrue(JAPANESE.matcher(detail).find(), "안내 문구가 일본어가 아니다: $detail")
-        assertTrue(detail.contains("メガピクセル"), "바이트가 아니라 해상도 문제임이 드러나야 한다: $detail")
     }
 
     /**
@@ -314,10 +305,9 @@ class ImageNormalizationTest {
      * 최소한 "우리가 의도한 값"은 한 곳에 남는다.
      */
     @Test
-    fun `출하 기본값 — 상한 40MB, 저장본 1600px, 전송본 768px`() {
+    fun `출하 기본값 — 저장본 1600px, 전송본 768px`() {
         val defaults = MediaProperties()
 
-        assertEquals(DataSize.ofMegabytes(40), defaults.maxFileSize)
         assertEquals(1600, defaults.maxEdge)
         // 저장본과 전송본의 기준이 다르다는 것 자체가 설계다. 같아지면 둘 중 하나가 손해다.
         assertEquals(768, defaults.aiMaxEdge)

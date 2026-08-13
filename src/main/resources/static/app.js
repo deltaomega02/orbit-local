@@ -170,6 +170,15 @@
       // AI 가 상의·하의를 갖춘 조합을 내놓지 못한 경우. 서버가 걸러 낸 것이므로
       // 사용자가 고칠 수 있는 것은 없다. 다시 해 보라고만 말한다.
       case 'ai_invalid_response': return 'コーデを作れませんでした。しばらくしてからもう一度お試しください。';
+      /*
+       * 형식 때문에 막힌 것을 "읽을 수 없습니다"로 뭉뚱그리면, 사용자는 사진이
+       * 깨진 줄 알고 같은 파일을 몇 번이고 다시 고른다. 실제로 걸리는 것은 거의
+       * 하나다 — 아이폰이 기본으로 저장하는 HEIC. 자바에 디코더가 없어서 받을 수
+       * 없고, 브라우저도 못 그린다. 이름을 대고 빠져나갈 길을 알려준다.
+       */
+      case 'unsupported_image_type':
+        return 'この形式の写真は使えません。iPhone の HEIC 形式かもしれません。'
+          + 'JPEG（.jpg）で保存し直してからお試しください。';
     }
     switch (err.status) {
       case 0: return 'サーバーに接続できません。Orbit が起動しているか確認してください。';
@@ -177,7 +186,7 @@
       case 401: return 'セッションを続けられませんでした。しばらくしてからもう一度お試しください。';
       case 403: return '権限がありません。';
       case 404: return '見つかりませんでした。再読み込みしてからもう一度お試しください。';
-      // 서버가 40MB 까지 받고 큰 사진은 알아서 줄인다. 여기까지 온다는 것은
+      // 서버는 크기로 거절하지 않는다(상한 자체가 없다). 여기까지 온다는 것은
       // 사진이 아니거나 뭔가 잘못된 파일이라는 뜻이다. 사용자에게 "줄여서
       // 다시 올려라"고 하면 할 수 없는 일을 시키는 셈이라 문구를 바꿨다.
       case 413: return 'この写真は読み込めませんでした。別の写真でお試しください。';
@@ -205,7 +214,12 @@
   };
   function catOf(key) { return CATEGORY[key] || { label: 'その他', en: 'Item', initial: 'ITEM' }; }
 
-  var MAX_UPLOAD = 10 * 1024 * 1024;
+  /*
+   * 업로드 크기 상한이 여기 있었다(10MB). 서버 쪽을 40MB 로 올린 뒤에도 이 값이
+   * 남아 있어서, 화면은 계속 "10MB 以下" 라고 거절했다. 상한을 두 곳에서 관리하면
+   * 반드시 이런 식으로 어긋난다.
+   * 지금은 서버가 크기로 거절하지 않고 받아서 줄인다. 화면도 재지 않는다.
+   */
 
   /* ---------------- 번호 · 날짜 ---------------- */
   /**
@@ -2479,12 +2493,6 @@
     var file = e.target.files && e.target.files[0];
     if (!file) return;
 
-    if (file.size > MAX_UPLOAD) {
-      setNote($('#add-error'), '写真が大きすぎます。10MB以下で選んでください。');
-      e.target.value = '';
-      return;
-    }
-
     setNote($('#add-error'), '');
     setNote($('#analyze-warn'), '');
     state.addImage = file;
@@ -2530,10 +2538,16 @@
       .catch(function (err) {
         if (err && err.name === 'AbortError') return;
         if (isExpired(err)) return;
+        /*
+         * 원인을 뭉뚱그리지 않는다. 예전에는 형식 문제도 "読み取れませんでした" 로
+         * 나가서, 사용자는 AI 가 못 알아본 줄 알고 같은 HEIC 파일을 계속 다시 골랐다.
+         */
         analyzeNotice(
-          err.isApiError && err.status === 503
-            ? 'AI が応答していません。直接入力して保存できます。'
-            : '写真を自動で読み取れませんでした。直接入力して保存できます。',
+          err.isApiError && (err.code === 'unsupported_image_type' || err.status === 415)
+            ? humanError(err)
+            : err.isApiError && err.status === 503
+              ? 'AI が応答していません。直接入力して保存できます。'
+              : '写真を自動で読み取れませんでした。直接入力して保存できます。',
           'warn'
         );
       })
@@ -2773,12 +2787,6 @@
     var file = e.target.files && e.target.files[0];
     if (!file) return;
     setNote($('#body-photo-error'), '');
-
-    if (file.size > MAX_UPLOAD) {
-      setNote($('#body-photo-error'), '写真が大きすぎます。10MB以下で選んでください。');
-      e.target.value = '';
-      return;
-    }
 
     // 서버 응답을 기다리기 전에 먼저 보여 준다 (실패하면 되돌린다)
     var previousUrl = state.user && state.user.bodyPhotoUrl;

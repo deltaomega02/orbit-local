@@ -66,6 +66,60 @@ object DesktopRuntime {
  * 원래 원했던 결과이고, 그마저 실패하면 최소한 "이미 켜져 있다"고 말은 해 준다.
  */
 object SecondInstance {
+
+    /**
+     * **새 버전이 옛 버전을 밀어낸다.**
+     *
+     * 이게 없을 때 실제로 이런 일이 있었다. 새 배포본을 받아 exe 를 눌렀는데, 옛
+     * 인스턴스가 아직 떠 있어서 아래 [handOverToRunningInstance] 가 그쪽 화면을
+     * 열어 줬다. 사용자가 본 것은 **방금 고친 것이 하나도 반영되지 않은 옛 앱**이고,
+     * 새 exe 는 조용히 죽었다. 고쳤다고 말한 것이 안 고쳐져 있으니 앱을 의심하기
+     * 전에 사람을 의심하게 된다.
+     *
+     * 그래서 같은 빌드가 아니면 떠 있는 쪽을 끝내고 자리를 넘겨받는다. 같은
+     * 빌드면 굳이 다시 뜰 이유가 없으므로 예전처럼 화면만 열어 준다 — 아이콘을
+     * 두 번 눌렀다고 앱이 매번 재시작하면 그것대로 이상하다.
+     *
+     * 빌드를 구별하는 값은 실행 파일 자체의 크기와 수정 시각이다([buildStamp]).
+     * 버전 문자열은 배포마다 바뀐다는 보장이 없어서(코드의 version 은 그대로 두고
+     * 패키지 버전만 올리는 일이 흔하다) 신뢰할 수 없다.
+     *
+     * @return 자리를 넘겨받아 계속 떠도 되면 true.
+     */
+    fun replaceOutdatedInstance(): Boolean {
+        val stamp = SingleInstance.publishedStamp()
+        // 같은 빌드가 이미 떠 있다 — 다시 뜰 이유가 없다.
+        if (stamp != null && stamp == SingleInstance.buildStamp()) return false
+
+        val pid = SingleInstance.publishedPid() ?: return false
+        val handle = ProcessHandle.of(pid).orElse(null) ?: return false
+        // PID 는 재사용된다. 남의 프로세스를 끄지 않도록 실행 파일 이름을 확인한다.
+        if (!looksLikeOrbit(handle)) return false
+
+        /*
+         * 윈도우에는 유닉스의 TERM 같은 "정리하고 끝내라"가 없어서 destroy() 도
+         * 결국 TerminateProcess 다. 그래도 데이터는 남는다 — H2 를 WRITE_DELAY=0
+         * 으로 열어 두었기 때문에 커밋된 것은 이미 디스크에 있다. 사진은 DB 에
+         * 기록되기 전에 파일로 먼저 떨어진다.
+         */
+        handle.destroy()
+        runCatching { handle.onExit().get(EXIT_WAIT_SECONDS, java.util.concurrent.TimeUnit.SECONDS) }
+
+        // 프로세스가 사라져도 파일 잠금이 풀리는 데 찰나가 걸린다. 몇 번 더 두드린다.
+        repeat(LOCK_RETRIES) {
+            if (SingleInstance.acquire()) return true
+            Thread.sleep(LOCK_RETRY_INTERVAL_MS)
+        }
+        return false
+    }
+
+    private fun looksLikeOrbit(handle: ProcessHandle): Boolean =
+        handle.info().command().orElse("").contains("orbit", ignoreCase = true)
+
+    private const val EXIT_WAIT_SECONDS = 15L
+    private const val LOCK_RETRIES = 20
+    private const val LOCK_RETRY_INTERVAL_MS = 250L
+
     fun handOverToRunningInstance() {
         // 브라우저를 열지 않기로 한 실행이라면 안내 창도 띄우지 않는다. 사람이
         // 보고 있지 않은 자리에서 대화 상자가 뜨면 그 프로세스는 영영 안 끝난다.
@@ -153,16 +207,56 @@ object SingleInstance {
         }
     }
 
+    /**
+     * 떠 있는 인스턴스가 자기를 알리는 파일. 세 줄이다.
+     *
+     *   1) 포트   — 두 번째 실행이 화면을 열어 줄 주소
+     *   2) PID    — 새 빌드가 옛 빌드를 끝낼 때 쓴다
+     *   3) 빌드   — 끝낼 필요가 있는지 판단하는 값 ([buildStamp])
+     *
+     * 예전에는 포트 한 줄이었다. 줄을 늘리면서도 첫 줄은 그대로 포트로 두었기
+     * 때문에, 옛 인스턴스가 써 둔 파일도 포트만은 읽힌다(= 화면 열어 주기는 계속
+     * 동작한다). 다만 PID 가 없어서 **옛 인스턴스를 끝낼 수는 없다.** 이 판의
+     * 자리바꿈은 새 형식으로 쓴 인스턴스부터 적용된다.
+     */
     fun publishPort(port: Int) {
         runCatching {
             Files.createDirectories(OrbitPaths.dataDir)
-            Files.write(OrbitPaths.portFile, port.toString().toByteArray(StandardCharsets.UTF_8))
+            val body = listOf(port.toString(), ProcessHandle.current().pid().toString(), buildStamp())
+                .joinToString("\n")
+            Files.write(OrbitPaths.portFile, body.toByteArray(StandardCharsets.UTF_8))
         }
     }
 
-    fun publishedPort(): Int? = runCatching {
-        Files.readString(OrbitPaths.portFile, StandardCharsets.UTF_8).trim().toIntOrNull()
+    private fun line(index: Int): String? = runCatching {
+        Files.readString(OrbitPaths.portFile, StandardCharsets.UTF_8)
+            .lineSequence().drop(index).firstOrNull()?.trim()?.takeIf { it.isNotEmpty() }
     }.getOrNull()
+
+    fun publishedPort(): Int? = line(0)?.toIntOrNull()
+
+    fun publishedPid(): Long? = line(1)?.toLongOrNull()
+
+    fun publishedStamp(): String? = line(2)
+
+    /**
+     * 이 실행이 어느 빌드인지 나타내는 값.
+     *
+     * 실행 파일의 크기와 수정 시각을 쓴다. 다시 빌드하면 반드시 둘 중 하나는 바뀌고,
+     * 같은 파일을 다시 실행하면 반드시 같다 — 여기서 필요한 성질은 그 두 가지뿐이다.
+     * 버전 문자열은 쓰지 않는다. 코드의 version 을 그대로 둔 채 패키지 버전만 올리는
+     * 일이 흔해서, 다른 빌드가 같은 이름을 달고 나오는 것을 막지 못한다.
+     *
+     * 값을 못 구하면 "unknown" 이고, 그때는 서로 다른 빌드로 친다. 판단이 안 서면
+     * **새로 뜨는 쪽에 무게를 둔다** — 옛것이 살아남아 새 배포본이 무시되는 쪽이
+     * 훨씬 나쁜 실패다.
+     */
+    fun buildStamp(): String {
+        val path = System.getProperty("jpackage.app-path")
+            ?: System.getProperty("java.class.path")?.split(java.io.File.pathSeparator)?.firstOrNull()
+        val file = path?.let { java.io.File(it) }
+        return if (file != null && file.isFile) "${file.length()}-${file.lastModified()}" else "unknown"
+    }
 
     fun releasePort() {
         runCatching { Files.deleteIfExists(OrbitPaths.portFile) }

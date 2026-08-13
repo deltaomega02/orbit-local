@@ -46,9 +46,12 @@ fun main(args: Array<String>) {
     System.setProperty("java.awt.headless", "false")
 
     // 두 번째 실행은 실패시키지 않는다. H2 파일 DB 는 한 프로세스만 열 수 있어서
-    // 그냥 두면 "아이콘을 눌렀는데 아무 일도 안 일어났다"가 된다. 이미 떠 있는
-    // 쪽의 화면을 열어 주고 조용히 물러난다.
-    if (!SingleInstance.acquire()) {
+    // 그냥 두면 "아이콘을 눌렀는데 아무 일도 안 일어났다"가 된다.
+    //
+    // 이미 떠 있는 것이 **다른 빌드**면 그쪽을 끝내고 자리를 넘겨받는다. 새 배포본을
+    // 눌렀는데 옛 인스턴스의 화면이 열리면, 사용자는 "고쳤다"는 것이 하나도 안 고쳐진
+    // 화면을 보게 된다. 같은 빌드면 다시 뜰 이유가 없으니 화면만 열어 주고 물러난다.
+    if (!SingleInstance.acquire() && !SecondInstance.replaceOutdatedInstance()) {
         SecondInstance.handOverToRunningInstance()
         exitProcess(0)
     }

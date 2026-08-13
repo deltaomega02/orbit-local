@@ -165,9 +165,6 @@ class ImageNormalizer(private val properties: MediaProperties) {
 
         val (width, height) = dimensionsOf(bytes)
             ?: throw UnsupportedImageTypeException("画像を読み取れませんでした")
-        if (width.toLong() * height > properties.maxPixels) {
-            throw ImagePixelsTooLargeException(properties.maxPixels)
-        }
 
         val meta = readMetadata(bytes)
         val needsRotate = meta.orientation != ORIENTATION_NORMAL
@@ -178,7 +175,7 @@ class ImageNormalizer(private val properties: MediaProperties) {
 
         if (!needsRotate && !needsResize && !needsStrip) return NormalizedImage(bytes, type)
 
-        val decoded = runCatching { ImageIO.read(ByteArrayInputStream(bytes)) }.getOrNull()
+        val decoded = decodeBounded(bytes, width, height)
             // 매직 바이트는 JPEG/PNG 인데 픽셀을 못 읽는다면 이미지가 아니거나 깨진
             // 파일이다. 매직 바이트 검증([ImageType.detect])을 약화시키는 것이 아니라
             // 그 뒤에 한 겹 더 세우는 것이다 — 헤더만 흉내 낸 파일이 여기서 걸린다.
@@ -310,7 +307,47 @@ class ImageNormalizer(private val properties: MediaProperties) {
         return target
     }
 
-    /** 헤더만 읽어 크기를 본다. **디코드 전에** 알아야 픽셀 상한이 방어가 된다. */
+    /**
+     * 큰 사진도 메모리를 넘기지 않고 디코드한다.
+     *
+     * 예전에는 [MediaProperties.maxPixels] 를 넘으면 413 으로 돌려보냈다. 사용자
+     * 입장에서는 "왜 안 되는지 모를 거절"이고, 사진을 줄일 방법도 모른다.
+     *
+     * 그래서 거절하는 대신 **건너뛰며 읽는다.** ImageIO 의 소스 서브샘플링은 n 픽셀마다
+     * 하나씩만 실제로 펼치므로, 3만×3만(9억 픽셀)짜리도 n=5 면 3600만 픽셀만 쥔다.
+     * 원본을 통째로 펼친 뒤 줄이는 것과 결과가 거의 같은 이유는, 어차피 긴 변
+     * 1600px 로 줄일 것이기 때문이다 — 버릴 픽셀을 먼저 펼칠 이유가 없다.
+     *
+     * 서브샘플링은 [downscale] 의 절반씩 접기와 역할이 다르다. 여기는 "메모리에
+     * 올릴 수 있게" 거칠게 솎아내는 단계이고, 화질은 그 뒤 단계가 책임진다.
+     * 그래서 [MediaProperties.maxPixels] 를 목표 크기보다 넉넉히 두어, 솎아낸
+     * 결과가 여전히 최종 크기보다 충분히 크게 남도록 한다.
+     */
+    private fun decodeBounded(bytes: ByteArray, width: Int, height: Int): BufferedImage? {
+        val pixels = width.toLong() * height
+        if (pixels <= properties.maxPixels) {
+            return runCatching { ImageIO.read(ByteArrayInputStream(bytes)) }.getOrNull()
+        }
+
+        // 면적이 1/n² 로 줄므로, 필요한 n 은 넓이 비의 제곱근을 올림한 값이다.
+        val step = Math.ceil(Math.sqrt(pixels.toDouble() / properties.maxPixels)).toInt().coerceAtLeast(2)
+        log.info("사진이 {}x{} 라 {}픽셀마다 하나씩 읽는다", width, height, step)
+
+        return runCatching {
+            ImageIO.createImageInputStream(ByteArrayInputStream(bytes))?.use { input ->
+                val reader = ImageIO.getImageReaders(input).asSequence().firstOrNull() ?: return@use null
+                try {
+                    reader.input = input
+                    val param = reader.defaultReadParam.apply { setSourceSubsampling(step, step, 0, 0) }
+                    reader.read(0, param)
+                } finally {
+                    reader.dispose()
+                }
+            }
+        }.getOrNull()
+    }
+
+    /** 헤더만 읽어 크기를 본다. **디코드 전에** 알아야 읽는 방식을 정할 수 있다. */
     private fun dimensionsOf(bytes: ByteArray): Pair<Int, Int>? = runCatching {
         val input = ImageIO.createImageInputStream(ByteArrayInputStream(bytes)) ?: return@runCatching null
         input.use {

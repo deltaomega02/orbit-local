@@ -22,17 +22,16 @@ class ImageTooLargeException(val maxBytes: Long) : RuntimeException("이미지�
 data class MediaProperties(
     /** 미디어 루트. 저장소에는 커밋되지 않도록 .gitignore 의 `data/` 안을 기본값으로 둔다. */
     val dir: String = "./data/media",
-    /**
-     * 업로드 상한. 서블릿 컨테이너 상한(spring.servlet.multipart)도 함께 걸지만,
-     * 그건 "컨테이너가 버퍼링을 멈추는 선"이고 이 값은 "애플리케이션이 받아들이는 선"이다.
+    /*
+     * 여기에 업로드 크기 상한(maxFileSize)이 있었다. 8MB 로 시작해 40MB 까지
+     * 올렸는데, 올릴 때마다 그 선을 넘는 사진이 또 나왔다. 숫자를 고르는 일 자체가
+     * 틀린 문제였다 — 사용자는 자기 사진이 몇 MB 인지 모르고, 안다 해도 줄이는
+     * 방법을 모른다. 그 사람에게 "40MB 이하로 올리세요"는 아무 도움이 안 된다.
      *
-     * **이 값은 사용자를 막는 선이 아니라 "이건 사진이 아니다"를 거르는 안전선이다.**
-     * 예전에는 8MB 였고, 그건 요즘 폰 사진(12MP·HDR·연사 합성)이 예사로 넘는 값이라
-     * 멀쩡한 사진이 413 으로 거절됐다. 사용자는 왜 안 되는지도, 사진을 어떻게 줄이는지도
-     * 모른다. 그래서 받는 선은 40MB 로 넉넉히 열고, 디스크와 AI 비용은 상한이 아니라
-     * 저장 직전의 축소([ImageNormalizer.forStorage])로 통제한다.
+     * 큰 사진은 거절할 것이 아니라 서버가 받아서 줄이면 되는 것이었다. 저장되는
+     * 것은 어차피 긴 변 1600px, 수백 KB 다([ImageNormalizer.forStorage]).
+     * 메모리는 [maxPixels] 가 아니라 건너뛰며 읽는 디코드로 지킨다.
      */
-    val maxFileSize: DataSize = DataSize.ofMegabytes(40),
     /**
      * 저장본의 긴 변 상한(px). 넘으면 비율을 유지해 줄인다.
      *
@@ -50,11 +49,17 @@ data class MediaProperties(
      */
     val jpegQuality: Float = 0.85f,
     /**
-     * 픽셀 수 상한. [maxFileSize] 와 **다른 축의 방어**다 — 잘 압축된 PNG 는 20MB 로도
-     * 3만×3만 이 될 수 있고, 디코드하면 픽셀 버퍼만 수 GB 라 설치본의 힙을 그냥 넘긴다.
-     * 5천만 픽셀은 지금 나오는 폰 카메라(48~50MP)의 최대치를 다 덮는 값이다.
+     * **한 번에 메모리로 펼칠 픽셀 수.** 거절하는 선이 아니라 읽는 방식을 정하는 값이다.
+     *
+     * 잘 압축된 PNG 는 20MB 로도 3만×3만 이 될 수 있고, 그대로 디코드하면 픽셀
+     * 버퍼만 3.6GB 라 설치본의 힙(-Xmx)을 그냥 넘긴다. 예전에는 이 선을 넘으면
+     * 413 으로 돌려보냈는데, 그건 사용자 입장에서 "왜 안 되는지 모를 거절"이다.
+     *
+     * 지금은 이보다 큰 사진이 오면 **건너뛰며 읽는다**([ImageNormalizer.decodeBounded]).
+     * 어차피 긴 변 1600px 로 줄일 것이라 중간 픽셀을 다 펼칠 이유가 없다.
+     * 그래서 이 값은 "받아 줄 수 있는 크기"가 아니라 "한 번에 쥘 메모리"를 정한다.
      */
-    val maxPixels: Long = 50_000_000,
+    val maxPixels: Long = 40_000_000,
     /**
      * 가상 착용 결과를 앉힐 캔버스(px). **결과 사진의 크기는 여기서 정해진다.**
      *
@@ -151,10 +156,7 @@ class MediaStorage(
      */
     fun validate(bytes: ByteArray, declaredContentType: String?): ImageType {
         if (bytes.isEmpty()) throw IllegalArgumentException("空のファイルはアップロードできません")
-        if (bytes.size > properties.maxFileSize.toBytes()) {
-            throw ImageTooLargeException(properties.maxFileSize.toBytes())
-        }
-
+        // 크기로는 거절하지 않는다. 이유는 MediaProperties 위쪽 주석에 적었다.
         val actual = ImageType.detect(bytes)
             ?: throw UnsupportedImageTypeException("jpeg/png/webp 이미지만 업로드할 수 있습니다")
         val declared = declaredContentType?.takeIf { it.isNotBlank() }

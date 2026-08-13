@@ -145,23 +145,26 @@ class MediaApiTest {
     }
 
     /**
-     * 상한이 없으면 큰 파일 몇 개로 디스크와 메모리를 밀어낼 수 있다(원본이 그랬다).
-     * PNG 시그니처는 그대로 두고 뒤에 패딩만 붙여, "형식은 맞지만 크기가 문제"인
-     * 경우만 골라서 검증한다.
+     * 크기 때문에 막히지 않는다.
+     *
+     * 예전에는 여기서 413 을 기대했다. 상한을 8MB → 40MB 로 올린 뒤에도 그 선을 넘는
+     * 사진이 또 나왔고, 결국 "몇 MB 까지 받을까"를 정하는 일 자체를 그만뒀다.
+     * 디스크는 상한이 아니라 저장 직전 축소(긴 변 1600px)가 지킨다 — 몇 MB 로
+     * 들어오든 남는 것은 수백 KB 다.
      */
     @Test
-    fun `상한을 넘는 이미지는 413 으로 거절한다`() {
-        val oversized = pngBytes() + ByteArray(2_200_000) // 테스트 설정 상한은 2MB
+    fun `큰 이미지도 거절하지 않고 등록된다`() {
+        val oversized = pngBytes() + ByteArray(5_000_000)
 
         mockMvc.perform(
             multipart("/api/clothes")
                 .file(MockMultipartFile("image", "huge.png", "image/png", oversized))
-                .param("name", "너무 큰 사진")
+                .param("name", "아주 큰 사진")
                 .param("mainCategory", "TOP")
                 .header(HttpHeaders.AUTHORIZATION, me.bearer),
         )
-            .andExpect(status().isPayloadTooLarge)
-            .andExpect(jsonPath("$.error").value("image_too_large"))
+            .andExpect(status().isCreated)
+            .andExpect(jsonPath("$.imageUrl").isNotEmpty)
     }
 
     @Test
