@@ -1,6 +1,7 @@
 package com.orbit
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.orbit.ai.OutfitSuggestion
 import com.orbit.ai.RecommendCandidate
 import com.orbit.ai.RecommendRequest
 import com.orbit.ai.gemini.GeminiClient
@@ -32,12 +33,14 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /*
- * 추천의 맥락 — 사용자가 한 줄로 적어 준 오늘의 상황.
+ * 추천의 맥락과 규격.
  *
- * 확인할 것은 둘이다. 그 문장이 **프롬프트까지 도달**하는가(가짜 AI 없이 문자열을 직접
- * 본다), 그리고 **코디에 남는가**. 프롬프트에만 쓰고 버리면 기록에서 "그때 왜 이걸
- * 입었지"의 절반이 사라진다. 스타일 선호도(늘 적용)와는 층위가 달라서 프롬프트에서도
- * 블록이 갈라져야 한다.
+ * 두 가지를 함께 본다.
+ *  - **오늘의 상황** — 사용자가 한 줄로 적어 준 맥락이 프롬프트까지 가고, 코디에 남는가.
+ *    스타일 선호도(늘 적용)와 층위가 다르므로 프롬프트에서도 갈라져야 한다.
+ *  - **구성 검사** — 프롬프트에 "상의 1 · 하의 1"이라고 적어 두는 것은 요청이지 보장이
+ *    아니다. 서버가 다시 보지 않으면 모델이 상의만 돌려줬을 때 바지 없는 LOOK 이 저장된다.
+ *    이 저장소는 중복 조합에서 같은 교훈을 이미 한 번 코드로 옮긴 적이 있다.
  */
 
 /** 프롬프트 문자열. 네트워크를 타지 않는다 — `buildPrompt` 가 `internal` 이다. */
@@ -135,13 +138,37 @@ class SituationPromptTest {
         assertFalse("**먼저 오늘의 상황을 짚고**" in promptOf(), "상황이 없으면 짚을 것도 없다")
     }
 
+    /**
+     * 서버가 구성을 검사하게 됐으므로 프롬프트도 같은 말을 해 둔다. 규격을 알려주지
+     * 않고 거절만 하면 재시도가 같은 실패를 반복한다.
+     */
+    @Test
+    fun `카테고리당 한 벌을 넘지 말라는 규칙이 들어 있다`() {
+        val prompt = promptOf()
+
+        assertTrue("각 카테고리에서 1벌을 넘지 마라" in prompt)
+        assertTrue("상의(TOP) 1벌과 하의(BOTTOM) 1벌은 반드시 고른다" in prompt)
+    }
+
+    /** 파싱 실패 시의 폴백도 서버의 구성 검사를 통과해야 한다. 아니면 폴백까지 502 다. */
+    @Test
+    fun `폴백 조합도 상의 하나 하의 하나를 지킨다`() {
+        val parsed = recommender.parseOrFallback(
+            "JSON 이 아닙니다",
+            RecommendRequest(
+                candidates = candidates + RecommendCandidate(3L, "코트", MainCategory.OUTER, "네이비"),
+            ),
+        )
+
+        assertEquals(listOf(1L, 2L), parsed.clothesIds, "상의 1 · 하의 1 이어야 한다")
+    }
 }
 
-/** 상황이 요청 → 프롬프트 → 저장 → 응답까지 살아 남는지. */
+/** 상황이 요청 → 프롬프트 → 저장 → 응답까지 살아 남는지, 그리고 구성 검사가 실제로 도는지. */
 @SpringBootTest
 @AutoConfigureMockMvc
 @Import(FakeAiConfig::class)
-@DisplayName("오늘의 상황 — 추천 API")
+@DisplayName("오늘의 상황과 구성 검사 — 추천 API")
 class RecommendContextApiTest {
 
     @Autowired lateinit var mockMvc: MockMvc
@@ -156,6 +183,7 @@ class RecommendContextApiTest {
 
     private var top = 0L
     private var bottom = 0L
+    private var outer = 0L
 
     @BeforeEach
     fun setUp() {
@@ -167,7 +195,7 @@ class RecommendContextApiTest {
         me = api.signUpAndLogin("situation@orbit.test")
         top = addClothes("셔츠", "TOP")
         bottom = addClothes("슬랙스", "BOTTOM")
-        addClothes("코트", "OUTER")
+        outer = addClothes("코트", "OUTER")
     }
 
     private fun addClothes(name: String, category: String): Long {
@@ -289,5 +317,95 @@ class RecommendContextApiTest {
 
         assertEquals("카고팬츠 자주 넣어줘", recommender.lastRequest?.stylePreference)
         assertEquals("운동 갈 거야", recommender.lastRequest?.situation)
+    }
+
+    // ── 구성 검사 ─────────────────────────────────────────────────
+
+    /**
+     * 프롬프트가 이미 "상의 1 · 하의 1"을 요구하지만 그건 요청이지 보장이 아니다.
+     * id 검증만으로는 못 잡는다 — 상의만 고른 응답의 id 는 전부 진짜다.
+     */
+    @Test
+    fun `상의만 돌려주면 거절한다`() {
+        recommender.behavior = { OutfitSuggestion("상의만", "이유", listOf(top)) }
+
+        recommend()
+            .andExpect(status().isBadGateway)
+            .andExpect(jsonPath("$.error").value("ai_invalid_response"))
+
+        assertEquals(0, coordinationRepository.count(), "규격 밖 응답은 저장되면 안 된다")
+    }
+
+    @Test
+    fun `하의만 돌려줘도 거절한다`() {
+        recommender.behavior = { OutfitSuggestion("하의만", "이유", listOf(bottom)) }
+
+        recommend().andExpect(status().isBadGateway)
+        assertEquals(0, coordinationRepository.count())
+    }
+
+    @Test
+    fun `아우터만 돌려줘도 거절한다`() {
+        recommender.behavior = { OutfitSuggestion("아우터만", "이유", listOf(outer)) }
+
+        recommend().andExpect(status().isBadGateway)
+        assertEquals(0, coordinationRepository.count())
+    }
+
+    /**
+     * 잘라내지 않고 거절한다. 서버가 구성을 손대면 [OutfitSuggestion.reason] 이
+     * 설명하는 조합과 실제로 저장된 조합이 어긋난다 — 이 앱에서 사용자가 다시 보는
+     * 것은 조합보다 이유 쪽이다.
+     */
+    @Test
+    fun `상의를 둘 돌려주면 잘라내지 않고 거절한다`() {
+        val secondTop = addClothes("티셔츠", "TOP")
+        recommender.behavior = { OutfitSuggestion("상의 둘", "이유", listOf(top, secondTop, bottom)) }
+
+        recommend()
+            .andExpect(status().isBadGateway)
+            .andExpect(jsonPath("$.error").value("ai_invalid_response"))
+
+        assertEquals(0, coordinationRepository.count(), "일부만 골라 저장하면 이유와 조합이 어긋난다")
+    }
+
+    @Test
+    fun `아우터를 둘 돌려줘도 거절한다`() {
+        val secondOuter = addClothes("패딩", "OUTER")
+        recommender.behavior = { OutfitSuggestion("아우터 둘", "이유", listOf(top, bottom, outer, secondOuter)) }
+
+        recommend().andExpect(status().isBadGateway)
+        assertEquals(0, coordinationRepository.count())
+    }
+
+    /** 규격의 절반은 "아우터는 없어도 된다"이다. 여름에 아우터를 얹는 편이 오히려 틀렸다. */
+    @Test
+    fun `아우터가 없는 상의 하의 조합은 정상 통과한다`() {
+        recommender.behavior = { OutfitSuggestion("여름룩", "이유", listOf(top, bottom)) }
+
+        recommend()
+            .andExpect(status().isCreated)
+            .andExpect(jsonPath("$.items.length()").value(2))
+
+        assertEquals(1, coordinationRepository.count())
+    }
+
+    @Test
+    fun `아우터가 하나 붙은 조합도 정상 통과한다`() {
+        recommender.behavior = { OutfitSuggestion("겨울룩", "이유", listOf(top, bottom, outer)) }
+
+        recommend()
+            .andExpect(status().isCreated)
+            .andExpect(jsonPath("$.items.length()").value(3))
+    }
+
+    /** 같은 옷을 두 번 적어 보내는 것은 상의 둘이 아니다 — 중복을 걷어낸 뒤 판정한다. */
+    @Test
+    fun `같은 옷을 중복해서 돌려줘도 한 벌로 본다`() {
+        recommender.behavior = { OutfitSuggestion("중복", "이유", listOf(top, bottom, top)) }
+
+        recommend()
+            .andExpect(status().isCreated)
+            .andExpect(jsonPath("$.items.length()").value(2))
     }
 }

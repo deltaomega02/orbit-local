@@ -89,6 +89,9 @@ class OutfitAiService(
      * 코디에 함께 저장된다 — 기록에서 "그때 왜 이걸 입었지"에 답하는 값이라
      * 프롬프트에만 쓰고 버리면 절반만 남는다.
      *
+     * 돌아온 응답은 두 번 검사된다. **id 가 내 것인가**(아래)와 **구성이 한 벌인가**
+     * ([requireOutfitShape]). 둘 다 프롬프트에 이미 적혀 있는 요구지만, 프롬프트는
+     * 요청이지 보장이 아니다.
      */
     fun recommend(ownerId: Long, situation: String? = null): Coordination {
         val recommender = recommenderProvider.require()
@@ -147,7 +150,50 @@ class OutfitAiService(
             throw AiInvalidResponseException("추천 결과에 소유하지 않은 의류 id 가 있습니다: ${suggested - ownedIds}")
         }
 
+        // id 가 전부 내 것이어도 **구성이 코디가 아닐 수 있다.** 아래 참고.
+        val byId = wardrobe.associateBy { it.id }
+        requireOutfitShape(suggested.mapNotNull { byId[it]?.mainCategory })
+
         return coordinationService.create(ownerId, suggestion.title, suggested, suggestion.reason, context)
+    }
+
+    /**
+     * 추천 결과가 **입을 수 있는 한 벌인지** 검사한다. 상의 1 + 하의 1 + 아우터 0또는1.
+     *
+     * ## 왜 서버가 다시 보는가
+     *
+     * 프롬프트의 [고르는 규칙] 1번이 이미 같은 말을 하고 있다. 그런데 이 저장소는
+     * 중복 조합에서 이미 한 번 배웠다 — **프롬프트는 요청이지 보장이 아니다.**
+     * 모델이 상의만 돌려줘도 지금까지는 그대로 저장됐고, 사용자는 바지 없는 LOOK 을
+     * 받는다. id 검증만으로는 이걸 못 잡는다. 상의만 고른 응답의 id 는 전부 진짜다.
+     *
+     * ## 왜 잘라내지 않고 거절하는가
+     *
+     * 상의가 둘이면 하나를 버리고 저장할 수도 있다. 그렇게 하지 않는 이유는
+     * **[com.orbit.ai.OutfitSuggestion.reason] 때문**이다. 이유 문장은 모델이 고른
+     * 조합을 설명한 글이라, 서버가 구성을 손대는 순간 "네이비 셔츠에 카디건을
+     * 얹었어요"라고 적힌 코디에 카디건이 없는 상태가 된다. 조합과 설명이 어긋난
+     * 기록은 조합이 하나 모자란 것보다 나쁘다 — 이 앱에서 사용자가 다시 보는 것은
+     * 조합보다 이유 쪽이다.
+     *
+     * 거절은 [AiInvalidResponseException] → 502 로 나간다. 클라이언트가 보낸 것이
+     * 없으므로 400 이 아니고, 사용자가 할 수 있는 일은 재시도뿐이다. 재시도가 실제로
+     * 통할 여지도 있다 — 같은 프롬프트라도 다음 응답은 규격을 지킬 수 있다.
+     *
+     * 아우터가 없는 것은 **정상이다.** 여름에 아우터를 얹는 편이 오히려 틀렸다.
+     * 이 규격은 [RecommendableCombinations] 의 조합 수 식과 같은 모양이어야 한다.
+     * 둘 중 하나만 고치면 "다 봤다" 판정이 실제와 어긋난다.
+     */
+    private fun requireOutfitShape(categories: List<MainCategory>) {
+        val counts = categories.groupingBy { it }.eachCount()
+        val tops = counts[MainCategory.TOP] ?: 0
+        val bottoms = counts[MainCategory.BOTTOM] ?: 0
+        val outers = counts[MainCategory.OUTER] ?: 0
+        if (tops != 1 || bottoms != 1 || outers > 1) {
+            throw AiInvalidResponseException(
+                "추천 결과의 구성이 한 벌이 아닙니다 (상의 $tops · 하의 $bottoms · 아우터 $outers)",
+            )
+        }
     }
 
     /**

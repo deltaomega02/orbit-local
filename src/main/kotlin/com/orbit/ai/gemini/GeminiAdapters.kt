@@ -353,6 +353,7 @@ class GeminiOutfitRecommender(
         appendLine()
         appendLine("[고르는 규칙]")
         appendLine("1. 상의(TOP) 1벌과 하의(BOTTOM) 1벌은 반드시 고른다. 아우터(OUTER)는 어울릴 때만 1벌 더한다.")
+        appendLine("   **각 카테고리에서 1벌을 넘지 마라.** 상의 둘이나 아우터 둘을 넣으면 이 응답은 폐기된다.")
         appendLine("2. 색은 전체 3색 이내로 맞춘다. 톤을 통일하거나, 무채색 바탕에 한 곳만 색을 준다.")
         // 3·4번이 위 옷장 목록의 `계절:`·`소재:`·`핏:` 을 직접 가리킨다. 규칙에 값의
         // 이름을 적어 두지 않으면 모델은 옷 이름만 보고 계절감을 짐작하고, 그러면
@@ -392,7 +393,15 @@ class GeminiOutfitRecommender(
         appendLine("         옷 이름을 그대로 나열하지 말고, 왜 함께 두었는지를 말해라.")
     }
 
-    /** 응답을 못 읽었을 때의 결정적 대체안. 상의·하의를 하나씩 집는다. */
+    /**
+     * 응답을 못 읽었을 때의 결정적 대체안. 상의·하의를 하나씩 집는다.
+     *
+     * **이 조합도 서버의 구성 검사를 통과해야 한다.** 폴백은 검사 앞이 아니라 뒤에
+     * 있으므로(파싱 → 폴백 → [com.orbit.service.OutfitAiService] 의 검증), 여기서
+     * 상의만 집으면 폴백까지 502 가 된다. 상의 1 + 하의 1 은 그래서 우연이 아니다.
+     * 후보에 상의나 하의가 아예 없는 경우는 여기까지 오지 않는다 —
+     * `OutfitAiService.recommend` 가 AI 를 부르기 전에 400 으로 끊는다.
+     */
     private fun fallback(req: RecommendRequest): OutfitSuggestion {
         val picked = listOfNotNull(
             req.candidates.firstOrNull { it.mainCategory == MainCategory.TOP },
