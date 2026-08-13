@@ -317,8 +317,6 @@ input:focus-visible, textarea:focus-visible { outline: 2px solid var(--ink); out
 
 .inputrow { position: relative; }
 .inputrow input { padding-right: 52px; font-family: var(--font-num); font-size: 13px; }
-/* 비밀번호는 붙여넣는 키와 달리 사람이 직접 치는 글자다. 본문 서체·크기를 쓴다. */
-.inputrow--plain input { font-family: var(--font); font-size: 15px; }
 .inputrow__btn {
   position: absolute; right: var(--s1); top: 50%; transform: translateY(-50%);
   color: var(--ink-soft);
@@ -427,25 +425,11 @@ input:focus-visible, textarea:focus-visible { outline: 2px solid var(--ink); out
   gap: var(--s4);
   background: var(--paper);
 }
+.boot { padding: var(--s7) var(--gutter); text-align: center; }
 .boot__text { animation: breathe 1.6s ease-in-out infinite; }
 @keyframes breathe { 0%, 100% { opacity: .35; } 50% { opacity: 1; } }
-
-/* ------------------------------------------------------------
-   로그인
-   ------------------------------------------------------------ */
-.auth {
-  min-height: 100dvh;
-  display: grid; align-items: center;
-  padding: var(--s7) var(--gutter) calc(var(--s7) + env(safe-area-inset-bottom, 0px));
-}
-.auth__inner { width: min(420px, 100%); margin: 0 auto; }
-.brandmark--auth { text-align: center; }
-.auth__lede {
-  text-align: center;
-  font-size: 20px; font-weight: 700; letter-spacing: -.02em; line-height: 1.5;
-  margin: var(--s6) 0 var(--s7);
-}
-.auth__card { display: grid; gap: var(--s4); }
+/* 세션을 못 받은 자리. 예전에는 여기가 로그인 화면이었다. */
+.boot__msg { font-size: 15px; color: var(--ink-soft); max-width: var(--measure); }
 
 /* ------------------------------------------------------------
    앱 셸
@@ -1118,7 +1102,7 @@ input:focus-visible, textarea:focus-visible { outline: 2px solid var(--ink); out
 .chips--field .chip { min-height: 34px; padding: var(--s1) var(--s3); }
 
 /* 본문 텍스트는 화면이 넓어져도 읽기 좋은 줄 길이를 넘지 않는다. */
-.prose, .sheet__desc, .panel__desc, .steps, .empty__desc, .auth__lede { max-width: var(--measure); }
+.prose, .sheet__desc, .panel__desc, .steps, .empty__desc { max-width: var(--measure); }
 .empty__desc { max-width: 30ch; }
 
 /* ------------------------------------------------------------

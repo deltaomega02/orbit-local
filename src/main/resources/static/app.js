@@ -116,9 +116,8 @@
     switch (err.code) {
       case 'not_enough_clothes': return '상의와 하의를 최소 하나씩 등록해 주세요.';
       case 'no_body_photo': return '입어보기를 하려면 전신 사진이 필요해요.';
-      case 'duplicate_email': return '이미 가입된 이메일이에요.';
-      case 'invalid_credentials': return '이메일 또는 비밀번호가 올바르지 않아요.';
-      case 'session_expired': return '로그인이 만료되었어요. 다시 로그인해 주세요.';
+      case 'no_session':
+      case 'session_expired': return '세션을 이어 가지 못했어요. 잠시 후 다시 시도해 주세요.';
       case 'network': return '서버에 연결할 수 없어요. Orbit 이 켜져 있는지 확인해 주세요.';
       case 'clothes_in_use': return '코디에 쓰인 옷이라 지금은 지울 수 없어요.';
       case 'invalid_key': return '키가 올바르지 않아요. 복사한 글자를 다시 확인해 주세요.';
@@ -129,7 +128,7 @@
     switch (err.status) {
       case 0: return '서버에 연결할 수 없어요. Orbit 이 켜져 있는지 확인해 주세요.';
       case 400: return '입력한 내용을 다시 확인해 주세요.';
-      case 401: return '로그인이 만료되었어요. 다시 로그인해 주세요.';
+      case 401: return '세션을 이어 가지 못했어요. 잠시 후 다시 시도해 주세요.';
       case 403: return '권한이 없어요.';
       case 404: return '찾을 수 없어요. 새로고침 후 다시 시도해 주세요.';
       case 413: return '사진 용량이 너무 커요. 10MB 이하로 올려 주세요.';
@@ -574,35 +573,11 @@
 
   /* ================================================================
    * 셸 전환
+   *
+   * 화면은 둘뿐이다 — 앱, 그리고 앱을 못 연 이유를 말하는 부팅 화면.
+   * 로그인 화면은 없다. 세션은 api.js 가 알아서 받아 온다.
    * ================================================================ */
-  function showAuth(notice) {
-    show($('#app-shell'), false);
-    show($('#screen-auth'), true);
-    show($('#boot'), false);
-    setNote($('#auth-notice'), notice || '');
-    authError('');
-    resetState();
-  }
-
-  function resetState() {
-    state.user = null;
-    state.ai = { configured: false, masked: null, checked: false, editing: false };
-    state.closet = { items: [], page: 0, totalPages: 0, totalElements: 0, filter: 'ALL', loaded: false };
-    state.home = { today: [], recent: [], loaded: false, lookCount: 0 };
-    state.history = { items: [], page: 0, totalPages: 0, totalElements: 0, filter: 'ALL', loaded: false };
-    state.coord = { id: null, data: null, media: 'tryon' };
-    state.item = { id: null, data: null, usedIn: [], usedInUnavailable: false };
-    state.stats = { data: null, loaded: false };
-    state.pendingTryOn = null;
-    state.tryOnNote = null;
-    state.editItemId = null;
-    moreLoaded = false;
-    stack = [{ name: 'home', params: {}, scroll: 0 }];
-    releaseLocalPreviews();
-  }
-
   function showApp() {
-    show($('#screen-auth'), false);
     show($('#app-shell'), true);
     show($('#boot'), false);
     // 주소가 가리키는 화면에서 시작한다. 새로고침해도 보던 자리로 돌아온다.
@@ -612,141 +587,32 @@
     loadAiState();
   }
 
-  api.onSessionExpired(function () {
-    showAuth('로그인이 만료되었어요. 다시 로그인해 주세요.');
-  });
-
-  /* ================================================================
-   * 로그인 / 가입
-   * ================================================================ */
-
   /**
-   * 오류 문구와 그 옆의 출구 버튼을 함께 다룬다.
-   * 로그인에 실패하는 사람의 상당수는 "비밀번호를 틀린 사람"이 아니라
-   * "아직 계정이 없는 사람"이다. 문구만 주고 끝내면 그 사람은 막힌다.
+   * 세션을 못 받았을 때.
+   *
+   * 예전에는 이 자리가 로그인 화면이었다. 이제 사용자가 손으로 고칠 수 있는 것은
+   * 없으므로, 무엇이 막혔는지 한 줄로 말하고 다시 해 볼 버튼 하나만 둔다.
    */
-  function authError(msg, action) {
-    var box = $('#auth-error');
-    var btn = $('#btn-auth-error-action');
-    setNote(box, msg, $('#auth-error-msg'));
-    if (msg && action) {
-      btn.textContent = action.label;
-      btn.hidden = false;
-      btn.onclick = action.run;
-    } else {
-      btn.hidden = true;
-      btn.onclick = null;
-    }
+  function showBootError(message) {
+    show($('#app-shell'), false);
+    show($('#boot'), true);
+    $('#boot-label').textContent = 'Offline';
+    $('#boot-label').style.animation = 'none';
+    setNote($('#boot-msg'), message || humanError(null));
+    show($('#btn-boot-retry'), true);
   }
 
-  /** 탭을 바꾼다. 이미 친 이메일은 그대로 옮겨 준다. */
-  function setAuthTab(mode) {
-    $$('[data-auth-tab]').forEach(function (t) {
-      var on = t.dataset.authTab === mode;
-      t.classList.toggle('is-active', on);
-      t.setAttribute('aria-selected', on ? 'true' : 'false');
-    });
-    // 탭을 바꿨다고 방금 친 이메일까지 사라지면 두 번 치게 된다.
-    var from = mode === 'signup' ? $('#login-email') : $('#signup-email');
-    var to   = mode === 'signup' ? $('#signup-email') : $('#login-email');
-    if (from.value.trim() && !to.value.trim()) to.value = from.value.trim();
-
-    show($('#form-login'), mode === 'login');
-    show($('#form-signup'), mode === 'signup');
-    authError('');
-    setNote($('#auth-notice'), '');
+  function showBootLoading() {
+    $('#boot-label').textContent = 'Loading';
+    $('#boot-label').style.animation = '';
+    show($('#boot-msg'), false);
+    show($('#btn-boot-retry'), false);
+    show($('#boot'), true);
   }
 
-  $$('[data-auth-tab]').forEach(function (tab) {
-    tab.addEventListener('click', function () { setAuthTab(tab.dataset.authTab); });
+  api.onSessionExpired(function () {
+    showBootError('세션을 이어 갈 수 없어요. 잠시 후 다시 시도해 주세요.');
   });
-
-  /** 비밀번호 보기/가리기. 키 입력칸과 같은 방식을 로그인·가입에도 쓴다. */
-  $$('[data-reveal]').forEach(function (btn) {
-    btn.addEventListener('click', function () {
-      var input = document.getElementById(btn.dataset.reveal);
-      if (!input) return;
-      var shown = input.type === 'text';
-      input.type = shown ? 'password' : 'text';
-      btn.setAttribute('aria-pressed', shown ? 'false' : 'true');
-      btn.setAttribute('aria-label', shown ? '비밀번호 보기' : '비밀번호 가리기');
-      btn.innerHTML = icon(shown ? 'eye' : 'eye-off', 'ico--sm');
-    });
-  });
-
-  $('#form-login').addEventListener('submit', function (e) {
-    e.preventDefault();
-    var email = $('#login-email').value.trim();
-    var password = $('#login-password').value;
-    authError('');
-
-    if (!email || !password) {
-      authError('이메일과 비밀번호를 모두 입력해 주세요.');
-      return;
-    }
-    var done = busy(e.target.querySelector('button[type=submit]'), '로그인 중…');
-    api.auth.login(email, password)
-      .then(bootAfterLogin)
-      .catch(function (err) {
-        var noAccount = err && err.isApiError && err.code === 'invalid_credentials';
-        authError(humanError(err) || '로그인에 실패했어요.', noAccount ? {
-          label: '계정이 없나요? 가입하기',
-          run: function () {
-            setAuthTab('signup');
-            $('#signup-password').focus();
-          }
-        } : null);
-      })
-      .finally(done);
-  });
-
-  $('#form-signup').addEventListener('submit', function (e) {
-    e.preventDefault();
-    var email = $('#signup-email').value.trim();
-    var password = $('#signup-password').value;
-    var confirm = $('#signup-password2').value;
-    authError('');
-
-    if (!email || !password) {
-      authError('이메일과 비밀번호를 모두 입력해 주세요.');
-      return;
-    }
-    if (password.length < 8) {
-      authError('비밀번호는 8자 이상으로 정해 주세요.');
-      $('#signup-password').focus();
-      return;
-    }
-    // 오타를 다음 로그인에서 알게 되는 것이 이 화면의 유일한 함정이었다.
-    if (password !== confirm) {
-      authError('두 비밀번호가 서로 달라요. 다시 확인해 주세요.');
-      $('#signup-password2').focus();
-      return;
-    }
-    var done = busy(e.target.querySelector('button[type=submit]'), '가입 중…');
-    api.auth.signup(email, password)
-      // 가입 직후 바로 로그인시킨다. 방금 친 비밀번호를 또 치게 하지 않는다.
-      .then(function () { return api.auth.login(email, password); })
-      .then(bootAfterLogin)
-      .catch(function (err) {
-        var dup = err && err.isApiError && err.code === 'duplicate_email';
-        authError(humanError(err) || '가입에 실패했어요.', dup ? {
-          label: '로그인하러 가기',
-          run: function () { setAuthTab('login'); $('#login-password').focus(); }
-        } : null);
-      })
-      .finally(done);
-  });
-
-  function bootAfterLogin() {
-    return api.users.me().then(function (me) {
-      state.user = me;
-      showApp();
-    }).catch(function (err) {
-      if (err.isApiError && err.status === 401) return;
-      showApp();
-      toast(humanError(err), 'error');
-    });
-  }
 
   /* ================================================================
    * AI 연결 (Gemini 키)
@@ -2692,7 +2558,10 @@
   var moreLoaded = false;
 
   function onMoreEnter() {
-    $('#more-email').textContent = (state.user && state.user.email) || '';
+    // 이메일은 이 앱에서 아무 뜻도 없는 부품이다. 서버가 준 표시 이름만 쓴다.
+    var name = (state.user && state.user.displayName) || '';
+    $('#more-name').textContent = name;
+    show($('#more-name'), !!name);
     renderBodyPhoto();
     renderAiState();
     loadStats().then(renderStatsPanel).catch(function () {});
@@ -2977,27 +2846,33 @@
   /* ================================================================
    * 부팅
    * ================================================================ */
+  /**
+   * 켜자마자 홈이다.
+   *
+   * 쓸 수 있는 토큰이 있으면 그대로 쓰고, 없으면 api.js 가 조용히 세션을 받아 온다.
+   * 물어보는 화면은 어디에도 없다.
+   */
   function boot() {
-    if (!api.tokens.exists()) {
-      showAuth();
-      return;
-    }
-    api.users.me().then(function (me) {
-      state.user = me;
-      showApp();
-    }).catch(function (err) {
-      if (err.isApiError && err.status === 401) {
-        // onSessionExpired 가 이미 안내와 함께 로그인 화면으로 보냈다.
-        // 여기서 다시 showAuth() 를 부르면 그 문구를 지워 버린다.
-        show($('#boot'), false);
-        if ($('#screen-auth').hidden) showAuth();
-        return;
-      }
-      // 서버가 잠깐 안 뜬 경우까지 세션을 버리지는 않는다
-      showApp();
-      toast(humanError(err), 'error');
-    });
+    showBootLoading();
+    api.auth.ensure()
+      .then(function () { return api.users.me(); })
+      .then(function (me) {
+        state.user = me;
+        showApp();
+      })
+      .catch(function (err) {
+        // 세션조차 못 받았으면 앱을 열어 봐야 전부 401 이다. 이유를 말하고 멈춘다.
+        if (!api.tokens.exists()) {
+          showBootError(humanError(err));
+          return;
+        }
+        // 토큰은 살아 있는데 첫 요청만 어긋난 경우. 앱은 열어 두고 알리기만 한다.
+        showApp();
+        toast(humanError(err), 'error');
+      });
   }
+
+  $('#btn-boot-retry').addEventListener('click', boot);
 
   boot();
 })();

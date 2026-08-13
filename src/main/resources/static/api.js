@@ -3,7 +3,8 @@
  *
  * 여기에만 있는 것:
  *   - 토큰 보관 (localStorage)
- *   - 401 → refresh 1회 → 원래 요청 재시도 (실패하면 세션 종료 신호)
+ *   - 세션 자동 발급 (로그인 화면이 없다)
+ *   - 401 → refresh 1회 → 실패하면 세션 재발급 → 원래 요청 재시도
  *   - 서버 오류를 ApiError(status, body) 로 통일
  *   - "아직 안 만들어진 엔드포인트"를 빈 값으로 흘려보내는 optional()
  *
@@ -66,7 +67,9 @@
   }
 
   /* ----------------------------------------------------------------
-   * 세션 만료 콜백 — app.js 가 등록한다
+   * 세션을 아예 못 만들었을 때의 콜백 — app.js 가 등록한다.
+   * 자동 발급까지 실패한 경우이므로 "로그인해 주세요"가 아니라
+   * "서버에 닿지 못했다"에 가깝다.
    * ---------------------------------------------------------------- */
   var onSessionExpired = function () {};
 
@@ -142,8 +145,122 @@
     });
   }
 
-  /** 세션 종료. 토큰을 버리고 화면을 로그인으로 되돌린 뒤 항상 reject 한다. */
-  function endSession() {
+  /* ----------------------------------------------------------------
+   * 세션 자동 발급
+   *
+   * 이 Orbit 은 자기 노트북에서 혼자 쓰는 앱이다. 물어볼 사람이 하나뿐인데
+   * 이메일과 비밀번호를 묻는 화면을 세워 둘 이유가 없다. 토큰이 없거나
+   * 되살릴 수 없으면 서버에서 조용히 새 세션을 받아 온다.
+   * ---------------------------------------------------------------- */
+  var LOCAL_ACCOUNT_KEY = 'orbit.localAccount';
+  var sessionInFlight = null;
+
+  /**
+   * 세션 엔드포인트가 "아직 없음"인가.
+   * 이 요청은 Authorization 을 붙이지 않으므로 401 도 "권한 없음"이 아니라
+   * "그 경로가 아직 열려 있지 않다"는 뜻이다.
+   */
+  function sessionMissing(err) {
+    if (!err || !err.isApiError) return false;
+    return err.status === 401 || err.status === 404 || err.status === 405 || err.status === 501;
+  }
+
+  /** 무작위 문자열. 자격증명을 소스에 적어 두지 않기 위한 것이다. */
+  function randomTag() {
+    var bytes = new Uint8Array(18);
+    (global.crypto || global.msCrypto).getRandomValues(bytes);
+    return Array.prototype.map.call(bytes, function (b) {
+      return ('0' + b.toString(16)).slice(-2);
+    }).join('');
+  }
+
+  /**
+   * 임시 안전장치용 로컬 계정 — 서버에 아직 `POST /api/auth/session` 이 없을 때만 쓴다.
+   *
+   * 계정은 이 사용자에게 아무 뜻도 없는 부품이라 화면에 묻지 않고 여기서 만든다.
+   * 소스에 적어 두면 그건 그냥 공개된 자격증명이므로, 처음 한 번 만들어 이 브라우저에
+   * 보관한다. 서버가 세션 엔드포인트를 열면 이 길은 한 번도 지나지 않는다.
+   */
+  function storedAccount() {
+    try {
+      var saved = JSON.parse(localStorage.getItem(LOCAL_ACCOUNT_KEY) || 'null');
+      if (saved && saved.email && saved.password) return saved;
+    } catch (e) { /* 못 읽으면 없는 것으로 본다 */ }
+    return null;
+  }
+
+  function createAccount() {
+    var tag = randomTag();
+    var account = { email: 'owner-' + tag.slice(0, 12) + '@orbit.local', password: tag };
+    try { localStorage.setItem(LOCAL_ACCOUNT_KEY, JSON.stringify(account)); } catch (e) { /* noop */ }
+    return account;
+  }
+
+  /**
+   * allowCreate 는 **처음 켤 때만** 참이다.
+   *
+   * 쓰던 세션이 끊긴 자리에서 새 계정을 만들어 버리면, 사용자는 아무 말도 없이
+   * 텅 빈 옷장 앞에 서고 지금까지의 기록은 남의 계정에 남는다. 잃을 것이 없는
+   * 첫 실행에서만 계정을 만들고, 그 밖에는 차라리 실패를 보여 준다.
+   */
+  function localSession(allowCreate) {
+    var account = storedAccount();
+    if (!account) {
+      if (!allowCreate) return Promise.reject(ApiError(401, { error: 'session_expired' }));
+      account = createAccount();
+    }
+    function login() {
+      return rawRequest('/api/auth/login', {
+        method: 'POST', auth: false,
+        json: { email: account.email, password: account.password }
+      });
+    }
+    return login().catch(function (err) {
+      // 아직 그 계정이 없다. 한 번 만들고 다시 들어간다.
+      var absent = err.isApiError && (err.status === 400 || err.status === 401 ||
+        err.code === 'invalid_credentials');
+      if (!absent) throw err;
+      return rawRequest('/api/auth/signup', {
+        method: 'POST', auth: false,
+        json: { email: account.email, password: account.password, displayName: '' }
+      }).then(login);
+    });
+  }
+
+  function issueSession(allowCreate) {
+    return rawRequest('/api/auth/session', { method: 'POST', auth: false })
+      .catch(function (err) {
+        if (!sessionMissing(err)) throw err;
+        return localSession(allowCreate);
+      })
+      .then(function (data) {
+        if (!data || !data.accessToken) throw ApiError(502, { error: 'no_session' });
+        tokens.save(data);
+        return data;
+      });
+  }
+
+  /**
+   * 여러 요청이 한꺼번에 세션을 찾아도 발급은 한 번만.
+   * force 는 "쓰던 세션이 끊겨서 다시 받는 길"이라는 뜻이고,
+   * 그때는 계정을 새로 만들지 않는다(위 localSession 주석).
+   */
+  function ensureSession(force) {
+    if (!force && tokens.exists()) return Promise.resolve(null);
+    if (sessionInFlight) return sessionInFlight;
+    sessionInFlight = issueSession(!force).finally(function () { sessionInFlight = null; });
+    return sessionInFlight;
+  }
+
+  /** 되살릴 수 없는 토큰을 버리고 새 세션을 받는다. */
+  function renewSession() {
+    tokens.clear();
+    api.media.clearCache();
+    return ensureSession(true).catch(function () { return failSession(); });
+  }
+
+  /** 발급까지 실패했다. 화면에 알리고 항상 reject 한다. */
+  function failSession() {
     tokens.clear();
     api.media.clearCache();
     onSessionExpired();
@@ -152,7 +269,7 @@
 
   /**
    * 인증이 필요한 요청. 401 이면 refresh 를 한 번만 시도하고 원 요청을 재실행한다.
-   * 재발급도 실패하면 토큰을 버리고 로그인 화면으로 돌려보낸다.
+   * 재발급이 안 되면 로그인 화면으로 보내는 대신 세션을 새로 받아 이어 간다.
    */
   function request(path, opts) {
     opts = opts || {};
@@ -162,14 +279,14 @@
       if (!retryable) throw err;
 
       // catch 를 재시도 요청까지 감싸면 안 된다. 그러면 재발급은 성공했는데
-      // 재시도가 500 을 받은 경우까지 "세션 만료"로 오인해 로그아웃시킨다.
+      // 재시도가 500 을 받은 경우까지 "세션 만료"로 오인해 버린다.
       return doRefresh().catch(function () {
-        return endSession();
+        return renewSession();
       }).then(function () {
         return rawRequest(path, Object.assign({}, opts, { _retried: true }))
           .catch(function (err2) {
-            // 새 토큰으로도 401 이면 그때는 진짜 끝난 것이다.
-            if (err2.isApiError && err2.status === 401) return endSession();
+            // 갓 받은 토큰으로도 401 이면 그때는 진짜 끝난 것이다.
+            if (err2.isApiError && err2.status === 401) return failSession();
             throw err2;
           });
       });
@@ -254,21 +371,10 @@
     onSessionExpired: function (fn) { onSessionExpired = fn; },
 
     auth: {
-      signup: function (email, password) {
-        return rawRequest('/api/auth/signup', {
-          method: 'POST', auth: false, json: { email: email, password: password }
-        });
-      },
-      login: function (email, password) {
-        return rawRequest('/api/auth/login', {
-          method: 'POST', auth: false, json: { email: email, password: password }
-        }).then(function (data) {
-          tokens.save(data);
-          return data;
-        });
-      },
-      /** 세션을 버린다. 화면에 버튼은 없지만 만료 처리에는 필요하다. */
-      end: function () { tokens.clear(); api.media.clearCache(); }
+      /** 앱이 켜질 때. 쓸 수 있는 토큰이 없으면 그때만 새로 받는다. */
+      ensure: function () { return ensureSession(false); },
+      /** 토큰을 버리고 처음부터 다시 받는다. */
+      renew: function () { return renewSession(); }
     },
 
     users: {
