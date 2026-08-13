@@ -40,5 +40,7 @@ if ! java -version >/dev/null 2>&1; then
   exit 1
 fi
 
-echo "→ http://localhost:8080 (종료는 Ctrl+C)"
+# 서버가 127.0.0.1 에만 바인딩된다(기기 밖 접근 차단). localhost 는 환경에
+# 따라 IPv6 ::1 로 먼저 해석돼 연결이 한 번 튕길 수 있어 IPv4 로 안내한다.
+echo "→ http://127.0.0.1:8080 (종료는 Ctrl+C)"
 exec ./gradlew bootRun --console=plain
