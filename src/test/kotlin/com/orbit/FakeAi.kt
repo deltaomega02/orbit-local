@@ -7,6 +7,7 @@ import com.orbit.ai.OutfitSuggestion
 import com.orbit.ai.RecommendRequest
 import com.orbit.ai.TryOnImageGenerator
 import com.orbit.domain.MainCategory
+import com.orbit.domain.Seasons
 import org.springframework.boot.test.context.TestConfiguration
 import org.springframework.context.annotation.Bean
 import java.awt.image.BufferedImage
@@ -57,14 +58,16 @@ class FakeClothingAnalyzer : ClothingAnalyzer {
          * [result] 를 직접 갈아끼워 만든다.
          */
         fun defaultResult() = ClothingAnalysis(
-            name = "흰 린넨 셔츠",
+            // 값은 일본어다. 실제 모델이 일본어로 답하도록 프롬프트를 바꿨으므로,
+            // 가짜가 한국어를 돌려주면 테스트는 존재하지 않는 상황을 검증하게 된다.
+            name = "白いリネンシャツ",
             mainCategory = MainCategory.TOP,
-            color = "화이트",
-            detail = "린넨 소재의 여름 셔츠",
-            subCategory = "셔츠",
-            material = "린넨",
-            fit = "레귤러",
-            season = "여름",
+            color = "ホワイト",
+            detail = "リネン素材の夏のシャツ",
+            subCategory = "シャツ",
+            material = "リネン",
+            fit = "レギュラー",
+            season = Seasons.SUMMER,
         )
     }
 }
@@ -97,7 +100,7 @@ class FakeOutfitRecommender : OutfitRecommender {
                 .flatMap { top -> bottoms.asSequence().map { bottom -> listOf(top.id, bottom.id) } }
                 .firstOrNull { it.toSet() !in req.avoidCombinations }
                 ?: listOf(tops.first().id, bottoms.first().id)
-            return OutfitSuggestion("오늘의 코디", "무난하게 어울리는 조합입니다.", combo)
+            return OutfitSuggestion("今日のコーデ", "無理なくまとまる組み合わせです。", combo)
         }
     }
 }

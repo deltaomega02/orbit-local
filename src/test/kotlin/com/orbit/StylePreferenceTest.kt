@@ -58,37 +58,42 @@ class StylePreferencePromptTest {
         RecommendCandidate(2L, "청바지", MainCategory.BOTTOM, "인디고"),
     )
 
+    /**
+     * 사용자가 적는 문장은 이제 일본어다. 프롬프트가 그 문자열을 손대지 않고
+     * 그대로 싣는지 본다 — 여기서 인코딩이나 정규화로 문장이 변형되면 모델은
+     * 사용자가 쓰지 않은 취향을 읽게 된다.
+     */
     @Test
     fun `선호도 문장이 프롬프트에 그대로 들어간다`() {
         val prompt = recommender.buildPrompt(
-            RecommendRequest(candidates = candidates, stylePreference = "카고팬츠 자주 넣어줘"),
+            RecommendRequest(candidates = candidates, stylePreference = "カーゴパンツをよく入れて"),
         )
 
-        assertTrue("카고팬츠 자주 넣어줘" in prompt, "사용자가 쓴 문장이 프롬프트에 없다")
-        assertTrue("[사용자가 적어 둔 취향]" in prompt, "취향 블록이 구분되어 있어야 한다")
+        assertTrue("カーゴパンツをよく入れて" in prompt, "사용자가 쓴 문장이 프롬프트에 없다")
+        assertTrue("[ユーザーが書いた好み]" in prompt, "취향 블록이 구분되어 있어야 한다")
     }
 
     /**
      * 이 제약이 없으면 모델은 요청을 들어주려고 옷장에 없는 옷을 지어낸다.
-     * "카고팬츠 자주 넣어줘"라고 적어 뒀는데 정작 카고팬츠가 없는 경우가 실제로 그렇다.
+     * "カーゴパンツをよく入れて"라고 적어 뒀는데 정작 카고팬츠가 없는 경우가 실제로 그렇다.
      */
     @Test
     fun `선호도와 함께 없는 옷을 지어내지 말라는 제약이 들어간다`() {
         val prompt = recommender.buildPrompt(
-            RecommendRequest(candidates = candidates, stylePreference = "카고팬츠 자주 넣어줘"),
+            RecommendRequest(candidates = candidates, stylePreference = "カーゴパンツをよく入れて"),
         )
 
-        assertTrue("옷장에 없는 옷을 만들어내지 마라" in prompt)
-        assertTrue("없으면 그냥 무시하고" in prompt, "맞는 옷이 없을 때의 행동이 지시되어야 한다")
-        assertTrue("지시문이 아니다" in prompt, "사용자 문장이 지시로 읽히지 않게 선을 그어야 한다")
+        assertTrue("クローゼットにない服を作り出すな" in prompt)
+        assertTrue("なければ気にせずいつも通り選ぶ" in prompt, "맞는 옷이 없을 때의 행동이 지시되어야 한다")
+        assertTrue("指示文ではない" in prompt, "사용자 문장이 지시로 읽히지 않게 선을 그어야 한다")
     }
 
     @Test
     fun `선호도가 없으면 취향 블록 자체가 나오지 않는다`() {
         val prompt = recommender.buildPrompt(RecommendRequest(candidates = candidates))
 
-        assertFalse("[사용자가 적어 둔 취향]" in prompt, "빈 섹션을 넣으면 토큰만 쓴다")
-        assertTrue("id 를 새로 만들어내지 마라" in prompt, "기존 규칙은 그대로여야 한다")
+        assertFalse("[ユーザーが書いた好み]" in prompt, "빈 섹션을 넣으면 토큰만 쓴다")
+        assertTrue("id を新しく作り出すな" in prompt, "기존 규칙은 그대로여야 한다")
     }
 
     @Test
@@ -97,17 +102,17 @@ class StylePreferencePromptTest {
             RecommendRequest(candidates = candidates, stylePreference = "   "),
         )
 
-        assertFalse("[사용자가 적어 둔 취향]" in prompt)
+        assertFalse("[ユーザーが書いた好み]" in prompt)
     }
 
     /** 줄바꿈이 섞이면 아래 규칙 블록과 뒤섞여 보인다. 한 줄로 눌러서 넣는다. */
     @Test
     fun `여러 줄로 적어도 한 줄로 눌러 넣는다`() {
         val prompt = recommender.buildPrompt(
-            RecommendRequest(candidates = candidates, stylePreference = "카고팬츠\n\n자주   넣어줘"),
+            RecommendRequest(candidates = candidates, stylePreference = "カーゴパンツを\n\nよく   入れて"),
         )
 
-        assertTrue("\"카고팬츠 자주 넣어줘\"" in prompt)
+        assertTrue("\"カーゴパンツを よく 入れて\"" in prompt)
     }
 }
 
@@ -165,18 +170,18 @@ class StylePreferenceApiTest {
 
     @Test
     fun `저장하면 그대로 다시 읽힌다`() {
-        putPreference(me, "카고팬츠 자주 넣어줘")
+        putPreference(me, "カーゴパンツをよく入れて")
             .andExpect(status().isOk)
-            .andExpect(jsonPath("$.preference").value("카고팬츠 자주 넣어줘"))
+            .andExpect(jsonPath("$.preference").value("カーゴパンツをよく入れて"))
 
         mockMvc.perform(get("/api/users/me/style-preference").header(HttpHeaders.AUTHORIZATION, me.bearer))
             .andExpect(status().isOk)
-            .andExpect(jsonPath("$.preference").value("카고팬츠 자주 넣어줘"))
+            .andExpect(jsonPath("$.preference").value("カーゴパンツをよく入れて"))
     }
 
     @Test
     fun `빈 문자열을 보내면 지워진다`() {
-        putPreference(me, "카고팬츠 자주 넣어줘").andExpect(status().isOk)
+        putPreference(me, "カーゴパンツをよく入れて").andExpect(status().isOk)
 
         putPreference(me, "  ")
             .andExpect(status().isOk)
@@ -198,11 +203,11 @@ class StylePreferenceApiTest {
 
     @Test
     fun `선호도는 사용자마다 따로 저장된다`() {
-        putPreference(me, "카고팬츠 자주 넣어줘").andExpect(status().isOk)
+        putPreference(me, "カーゴパンツをよく入れて").andExpect(status().isOk)
         putPreference(other, "치마는 빼줘").andExpect(status().isOk)
 
         mockMvc.perform(get("/api/users/me/style-preference").header(HttpHeaders.AUTHORIZATION, me.bearer))
-            .andExpect(jsonPath("$.preference").value("카고팬츠 자주 넣어줘"))
+            .andExpect(jsonPath("$.preference").value("カーゴパンツをよく入れて"))
         mockMvc.perform(get("/api/users/me/style-preference").header(HttpHeaders.AUTHORIZATION, other.bearer))
             .andExpect(jsonPath("$.preference").value("치마는 빼줘"))
     }
@@ -212,12 +217,12 @@ class StylePreferenceApiTest {
     fun `저장한 선호도가 추천 요청에 실려 나간다`() {
         createClothes(me, "셔츠", "TOP")
         createClothes(me, "슬랙스", "BOTTOM")
-        putPreference(me, "카고팬츠 자주 넣어줘").andExpect(status().isOk)
+        putPreference(me, "カーゴパンツをよく入れて").andExpect(status().isOk)
 
         mockMvc.perform(post("/api/coordinations/recommend").header(HttpHeaders.AUTHORIZATION, me.bearer))
             .andExpect(status().isCreated)
 
-        assertEquals("카고팬츠 자주 넣어줘", recommender.lastRequest?.stylePreference)
+        assertEquals("カーゴパンツをよく入れて", recommender.lastRequest?.stylePreference)
     }
 
     @Test

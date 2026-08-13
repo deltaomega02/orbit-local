@@ -80,7 +80,7 @@ data class ClothesResponse(
     val material: String?,
     /** 오버핏·슬림·와이드·레귤러 … */
     val fit: String?,
-    /** 봄·가을 / 여름 / 겨울 / 사계절. 사용자가 직접 적으면 그 밖의 값도 들어올 수 있다. */
+    /** 春・秋 / 夏 / 冬 / オールシーズン. 사용자가 직접 적으면 그 밖의 값도 들어올 수 있다([com.orbit.domain.Seasons]). */
     val season: String?,
     /** 위 축으로 나뉘지 않는 한 줄 요약. 추천 프롬프트에 그대로 실린다. */
     val detail: String?,

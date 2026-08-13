@@ -60,24 +60,24 @@ class ClothesAttributesPromptTest {
         val prompt = promptOf(
             RecommendCandidate(
                 id = 1L,
-                name = "흰 셔츠",
+                name = "白いシャツ",
                 mainCategory = MainCategory.TOP,
-                color = "화이트",
-                detail = "가슴에 자수",
-                subCategory = "셔츠",
-                material = "린넨",
-                fit = "레귤러",
-                season = "여름",
+                color = "ホワイト",
+                detail = "胸に刺繍",
+                subCategory = "シャツ",
+                material = "リネン",
+                fit = "レギュラー",
+                season = "夏",
             ),
         )
 
         val line = prompt.lines().first { "id=1" in it }
-        assertTrue("종류:셔츠" in line, "줄: $line")
-        assertTrue("색:화이트" in line, "줄: $line")
-        assertTrue("소재:린넨" in line, "줄: $line")
-        assertTrue("핏:레귤러" in line, "줄: $line")
-        assertTrue("계절:여름" in line, "줄: $line")
-        assertTrue("가슴에 자수" in line, "줄: $line")
+        assertTrue("種類:シャツ" in line, "줄: $line")
+        assertTrue("色:ホワイト" in line, "줄: $line")
+        assertTrue("素材:リネン" in line, "줄: $line")
+        assertTrue("フィット:レギュラー" in line, "줄: $line")
+        assertTrue("季節:夏" in line, "줄: $line")
+        assertTrue("胸に刺繍" in line, "줄: $line")
     }
 
     /**
@@ -88,8 +88,8 @@ class ClothesAttributesPromptTest {
     fun `속성이 많아도 옷 한 벌은 한 줄이다`() {
         val prompt = promptOf(
             RecommendCandidate(
-                1L, "흰 셔츠", MainCategory.TOP, "화이트", "가슴에 자수",
-                subCategory = "셔츠", material = "린넨", fit = "레귤러", season = "여름",
+                1L, "白いシャツ", MainCategory.TOP, "ホワイト", "胸に刺繍",
+                subCategory = "シャツ", material = "リネン", fit = "レギュラー", season = "夏",
             ),
         )
 
@@ -104,39 +104,39 @@ class ClothesAttributesPromptTest {
     @Test
     fun `값이 없는 속성은 줄에서 아예 빠진다`() {
         val prompt = promptOf(
-            RecommendCandidate(2L, "청바지", MainCategory.BOTTOM, null, null, material = "데님"),
+            RecommendCandidate(2L, "デニム", MainCategory.BOTTOM, null, null, material = "デニム"),
         )
 
         val line = prompt.lines().first { "id=2" in it }
-        assertTrue("소재:데님" in line, "있는 값은 들어가야 한다: $line")
-        assertFalse("종류:" in line, "빈 속성의 라벨이 남았다: $line")
-        assertFalse("색:" in line, "빈 속성의 라벨이 남았다: $line")
-        assertFalse("핏:" in line, "빈 속성의 라벨이 남았다: $line")
-        assertFalse("계절:" in line, "빈 속성의 라벨이 남았다: $line")
+        assertTrue("素材:デニム" in line, "있는 값은 들어가야 한다: $line")
+        assertFalse("種類:" in line, "빈 속성의 라벨이 남았다: $line")
+        assertFalse("色:" in line, "빈 속성의 라벨이 남았다: $line")
+        assertFalse("フィット:" in line, "빈 속성의 라벨이 남았다: $line")
+        assertFalse("季節:" in line, "빈 속성의 라벨이 남았다: $line")
         assertFalse("null" in line, "null 이 문자열로 새어 나갔다: $line")
     }
 
     @Test
     fun `공백만 있는 속성도 없는 것으로 본다`() {
         val prompt = promptOf(
-            RecommendCandidate(3L, "코트", MainCategory.OUTER, "  ", "  ", material = "  ", fit = "  "),
+            RecommendCandidate(3L, "コート", MainCategory.OUTER, "  ", "  ", material = "  ", fit = "  "),
         )
 
         val line = prompt.lines().first { "id=3" in it }
-        assertEquals("  - id=3 / 코트", line)
+        assertEquals("  - id=3 / コート", line)
     }
 
     /** 속성이 하나도 없는 옷장(=마이그레이션 직후)도 프롬프트가 성립해야 한다. */
     @Test
     fun `속성이 하나도 없어도 프롬프트는 성립한다`() {
         val prompt = promptOf(
-            RecommendCandidate(1L, "셔츠", MainCategory.TOP, null),
-            RecommendCandidate(2L, "청바지", MainCategory.BOTTOM, null),
+            RecommendCandidate(1L, "シャツ", MainCategory.TOP, null),
+            RecommendCandidate(2L, "デニム", MainCategory.BOTTOM, null),
         )
 
-        assertTrue("  - id=1 / 셔츠" in prompt)
-        assertTrue("  - id=2 / 청바지" in prompt)
-        assertTrue("id 를 새로 만들어내지 마라" in prompt, "기존 규칙은 그대로여야 한다")
+        assertTrue("  - id=1 / シャツ" in prompt)
+        assertTrue("  - id=2 / デニム" in prompt)
+        assertTrue("id を新しく作り出すな" in prompt, "기존 규칙은 그대로여야 한다")
     }
 
     /**
@@ -145,12 +145,12 @@ class ClothesAttributesPromptTest {
      */
     @Test
     fun `계절감과 핏 균형 규칙이 실제 속성 이름을 가리킨다`() {
-        val prompt = promptOf(RecommendCandidate(1L, "셔츠", MainCategory.TOP, null))
+        val prompt = promptOf(RecommendCandidate(1L, "シャツ", MainCategory.TOP, null))
 
-        assertTrue("`계절`" in prompt, "계절 규칙이 속성을 가리켜야 한다")
-        assertTrue("`핏`" in prompt, "핏 규칙이 속성을 가리켜야 한다")
-        assertTrue("계절:여름" in prompt && "계절:겨울" in prompt, "어긋나는 조합의 예가 있어야 한다")
-        assertTrue("추측해서 채우지 말고" in prompt, "빠진 속성을 지어내지 말라는 지시가 있어야 한다")
+        assertTrue("`季節`" in prompt, "계절 규칙이 속성을 가리켜야 한다")
+        assertTrue("`フィット`" in prompt, "핏 규칙이 속성을 가리켜야 한다")
+        assertTrue("季節:夏" in prompt && "季節:冬" in prompt, "어긋나는 조합의 예가 있어야 한다")
+        assertTrue("推測で埋めず" in prompt, "빠진 속성을 지어내지 말라는 지시가 있어야 한다")
     }
 }
 
@@ -202,23 +202,23 @@ class ClothesAttributesApiTest {
     fun `등록에서 네 속성이 저장되고 응답에 그대로 나온다`() {
         createJson(
             mapOf(
-                "name" to "린넨 셔츠",
+                "name" to "リネンシャツ",
                 "mainCategory" to "TOP",
-                "color" to "화이트",
-                "subCategory" to "셔츠",
-                "material" to "린넨",
-                "fit" to "레귤러",
-                "season" to "여름",
-                "detail" to "가슴에 작은 자수",
+                "color" to "ホワイト",
+                "subCategory" to "シャツ",
+                "material" to "リネン",
+                "fit" to "レギュラー",
+                "season" to "夏",
+                "detail" to "胸に小さな刺繍",
             ),
         )
             .andExpect(status().isCreated)
-            .andExpect(jsonPath("$.subCategory").value("셔츠"))
-            .andExpect(jsonPath("$.material").value("린넨"))
-            .andExpect(jsonPath("$.fit").value("레귤러"))
-            .andExpect(jsonPath("$.season").value("여름"))
-            .andExpect(jsonPath("$.detail").value("가슴에 작은 자수"))
-            .andExpect(jsonPath("$.color").value("화이트"))
+            .andExpect(jsonPath("$.subCategory").value("シャツ"))
+            .andExpect(jsonPath("$.material").value("リネン"))
+            .andExpect(jsonPath("$.fit").value("レギュラー"))
+            .andExpect(jsonPath("$.season").value("夏"))
+            .andExpect(jsonPath("$.detail").value("胸に小さな刺繍"))
+            .andExpect(jsonPath("$.color").value("ホワイト"))
     }
 
     /**
@@ -248,19 +248,19 @@ class ClothesAttributesApiTest {
         mockMvc.perform(
             multipart("/api/clothes")
                 .file(MockMultipartFile("image", "shirt.png", "image/png", pngBytes()))
-                .param("name", "니트")
+                .param("name", "ニット")
                 .param("mainCategory", "TOP")
-                .param("subCategory", "니트")
-                .param("material", "울 혼방")
-                .param("fit", "오버핏")
-                .param("season", "겨울")
+                .param("subCategory", "ニット")
+                .param("material", "ウール混")
+                .param("fit", "オーバーサイズ")
+                .param("season", "冬")
                 .header(HttpHeaders.AUTHORIZATION, me.bearer),
         )
             .andExpect(status().isCreated)
-            .andExpect(jsonPath("$.subCategory").value("니트"))
-            .andExpect(jsonPath("$.material").value("울 혼방"))
-            .andExpect(jsonPath("$.fit").value("오버핏"))
-            .andExpect(jsonPath("$.season").value("겨울"))
+            .andExpect(jsonPath("$.subCategory").value("ニット"))
+            .andExpect(jsonPath("$.material").value("ウール混"))
+            .andExpect(jsonPath("$.fit").value("オーバーサイズ"))
+            .andExpect(jsonPath("$.season").value("冬"))
             .andExpect(jsonPath("$.imageUrl").isString)
     }
 
@@ -283,18 +283,18 @@ class ClothesAttributesApiTest {
         val id = idOf(
             createJson(
                 mapOf(
-                    "name" to "니트", "mainCategory" to "TOP",
-                    "subCategory" to "니트", "material" to "울", "fit" to "슬림", "season" to "겨울",
+                    "name" to "ニット", "mainCategory" to "TOP",
+                    "subCategory" to "ニット", "material" to "ウール", "fit" to "スリム", "season" to "冬",
                 ),
             ).andExpect(status().isCreated),
         )
 
-        patchJson(id, mapOf("material" to "울 혼방", "fit" to "오버핏"))
+        patchJson(id, mapOf("material" to "ウール混", "fit" to "オーバーサイズ"))
             .andExpect(status().isOk)
-            .andExpect(jsonPath("$.material").value("울 혼방"))
-            .andExpect(jsonPath("$.fit").value("오버핏"))
-            .andExpect(jsonPath("$.subCategory").value("니트")) // 안 보낸 필드는 유지
-            .andExpect(jsonPath("$.season").value("겨울"))
+            .andExpect(jsonPath("$.material").value("ウール混"))
+            .andExpect(jsonPath("$.fit").value("オーバーサイズ"))
+            .andExpect(jsonPath("$.subCategory").value("ニット")) // 안 보낸 필드는 유지
+            .andExpect(jsonPath("$.season").value("冬"))
     }
 
     /**
@@ -307,8 +307,8 @@ class ClothesAttributesApiTest {
         val id = idOf(
             createJson(
                 mapOf(
-                    "name" to "니트", "mainCategory" to "TOP",
-                    "subCategory" to "니트", "material" to "울", "fit" to "슬림", "season" to "겨울",
+                    "name" to "ニット", "mainCategory" to "TOP",
+                    "subCategory" to "ニット", "material" to "ウール", "fit" to "スリム", "season" to "冬",
                 ),
             ).andExpect(status().isCreated),
         )
@@ -317,8 +317,8 @@ class ClothesAttributesApiTest {
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.material").doesNotExist())
             .andExpect(jsonPath("$.season").doesNotExist())
-            .andExpect(jsonPath("$.subCategory").value("니트"))
-            .andExpect(jsonPath("$.fit").value("슬림"))
+            .andExpect(jsonPath("$.subCategory").value("ニット"))
+            .andExpect(jsonPath("$.fit").value("スリム"))
 
         val saved = requireNotNull(clothesRepository.findById(id).orElse(null))
         assertNull(saved.material)
@@ -329,21 +329,21 @@ class ClothesAttributesApiTest {
     fun `PATCH 에서 보내지 않은 속성은 건드리지 않는다`() {
         val id = idOf(
             createJson(
-                mapOf("name" to "니트", "mainCategory" to "TOP", "material" to "울", "season" to "겨울"),
+                mapOf("name" to "ニット", "mainCategory" to "TOP", "material" to "ウール", "season" to "冬"),
             ).andExpect(status().isCreated),
         )
 
-        patchJson(id, mapOf("name" to "두꺼운 니트")).andExpect(status().isOk)
+        patchJson(id, mapOf("name" to "厚手のニット")).andExpect(status().isOk)
 
         val saved = requireNotNull(clothesRepository.findById(id).orElse(null))
-        assertEquals("두꺼운 니트", saved.name)
-        assertEquals("울", saved.material)
-        assertEquals("겨울", saved.season)
+        assertEquals("厚手のニット", saved.name)
+        assertEquals("ウール", saved.material)
+        assertEquals("冬", saved.season)
     }
 
     @Test
     fun `속성 길이 상한을 넘으면 400 이다`() {
-        createJson(mapOf("name" to "셔츠", "mainCategory" to "TOP", "season" to "겨".repeat(21)))
+        createJson(mapOf("name" to "シャツ", "mainCategory" to "TOP", "season" to "冬".repeat(21)))
             .andExpect(status().isBadRequest)
             .andExpect(jsonPath("$.error").value("invalid_request"))
     }
@@ -357,21 +357,21 @@ class ClothesAttributesApiTest {
                 .header(HttpHeaders.AUTHORIZATION, me.bearer),
         )
             .andExpect(status().isOk)
-            .andExpect(jsonPath("$.subCategory").value("셔츠"))
-            .andExpect(jsonPath("$.material").value("린넨"))
-            .andExpect(jsonPath("$.fit").value("레귤러"))
-            .andExpect(jsonPath("$.season").value("여름"))
-            .andExpect(jsonPath("$.name").value("흰 린넨 셔츠"))
+            .andExpect(jsonPath("$.subCategory").value("シャツ"))
+            .andExpect(jsonPath("$.material").value("リネン"))
+            .andExpect(jsonPath("$.fit").value("レギュラー"))
+            .andExpect(jsonPath("$.season").value("夏"))
+            .andExpect(jsonPath("$.name").value("白いリネンシャツ"))
     }
 
     @Test
     fun `AI 가 일부 속성을 못 뽑아도 나머지는 폼에 채워진다`() {
         analyzer.result = ClothingAnalysis(
-            name = "청바지",
+            name = "デニム",
             mainCategory = MainCategory.BOTTOM,
             color = null,
             detail = null,
-            material = "데님",
+            material = "デニム",
         )
 
         mockMvc.perform(
@@ -380,7 +380,7 @@ class ClothesAttributesApiTest {
                 .header(HttpHeaders.AUTHORIZATION, me.bearer),
         )
             .andExpect(status().isOk)
-            .andExpect(jsonPath("$.material").value("데님"))
+            .andExpect(jsonPath("$.material").value("デニム"))
             .andExpect(jsonPath("$.subCategory").doesNotExist())
             .andExpect(jsonPath("$.fit").doesNotExist())
             .andExpect(jsonPath("$.season").doesNotExist())
@@ -391,12 +391,12 @@ class ClothesAttributesApiTest {
     fun `속성이 붙은 옷으로 만든 코디 응답은 그대로다`() {
         val top = idOf(
             createJson(
-                mapOf("name" to "셔츠", "mainCategory" to "TOP", "material" to "면", "season" to "여름"),
+                mapOf("name" to "シャツ", "mainCategory" to "TOP", "material" to "コットン", "season" to "夏"),
             ).andExpect(status().isCreated),
         )
         val bottom = idOf(
             createJson(
-                mapOf("name" to "슬랙스", "mainCategory" to "BOTTOM", "fit" to "와이드"),
+                mapOf("name" to "スラックス", "mainCategory" to "BOTTOM", "fit" to "ワイド"),
             ).andExpect(status().isCreated),
         )
 
@@ -408,7 +408,7 @@ class ClothesAttributesApiTest {
         )
             .andExpect(status().isCreated)
             .andExpect(jsonPath("$.items.length()").value(2))
-            .andExpect(jsonPath("$.items[0].name").value("셔츠"))
+            .andExpect(jsonPath("$.items[0].name").value("シャツ"))
             .andExpect(jsonPath("$.items[0].inWardrobe").value(true))
     }
 }

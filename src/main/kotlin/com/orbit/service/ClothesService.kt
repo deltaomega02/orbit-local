@@ -3,6 +3,7 @@ package com.orbit.service
 import com.orbit.domain.Clothes
 import com.orbit.domain.ClothesLimits
 import com.orbit.domain.MainCategory
+import com.orbit.domain.Seasons
 import com.orbit.media.MediaStorage
 import com.orbit.repository.ClothesRepository
 import com.orbit.repository.CoordinationItemRepository
@@ -52,7 +53,11 @@ data class ClothesTraits(
         subCategory = subCategory.clean(ClothesLimits.SUB_CATEGORY),
         material = material.clean(ClothesLimits.MATERIAL),
         fit = fit.clean(ClothesLimits.FIT),
-        season = season.clean(ClothesLimits.SEASON),
+        // 계절만 표준 표기로 한 번 눌러 준다([Seasons]). 자유 입력 필드지만 추천
+        // 프롬프트의 규칙이 이 값을 직접 비교하기 때문에(`季節:夏` ↔ `季節:冬`),
+        // 아는 표기가 두 언어로 섞이면 그 비교가 조용히 어긋난다. 목록에 없는 값은
+        // 그대로 통과한다 — 사용자가 자기 말로 적는 길까지 막을 이유는 없다.
+        season = Seasons.normalize(season.clean(ClothesLimits.SEASON)),
         detail = detail.clean(ClothesLimits.DETAIL),
     )
 

@@ -45,7 +45,7 @@ data class ClothingAnalysis(
     val material: String? = null,
     /** 오버핏·슬림·와이드·레귤러 … */
     val fit: String? = null,
-    /** 봄·가을 / 여름 / 겨울 / 사계절 중 하나. 그 밖의 값은 어댑터가 버린다. */
+    /** 春・秋 / 夏 / 冬 / オールシーズン 중 하나([com.orbit.domain.Seasons]). 그 밖의 값은 어댑터가 버린다. */
     val season: String? = null,
 )
 

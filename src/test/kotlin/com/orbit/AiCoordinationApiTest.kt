@@ -129,9 +129,9 @@ class AiCoordinationApiTest {
                 .header(HttpHeaders.AUTHORIZATION, me.bearer),
         )
             .andExpect(status().isOk)
-            .andExpect(jsonPath("$.name").value("흰 린넨 셔츠"))
+            .andExpect(jsonPath("$.name").value("白いリネンシャツ"))
             .andExpect(jsonPath("$.mainCategory").value("TOP"))
-            .andExpect(jsonPath("$.color").value("화이트"))
+            .andExpect(jsonPath("$.color").value("ホワイト"))
             .andExpect(jsonPath("$.detail").isString)
 
         assertEquals(1, analyzer.calls)
@@ -162,8 +162,8 @@ class AiCoordinationApiTest {
         recommend()
             .andExpect(status().isCreated)
             .andExpect(jsonPath("$.id").isNumber)
-            .andExpect(jsonPath("$.title").value("오늘의 코디"))
-            .andExpect(jsonPath("$.reason").value("무난하게 어울리는 조합입니다."))
+            .andExpect(jsonPath("$.title").value("今日のコーデ"))
+            .andExpect(jsonPath("$.reason").value("無理なくまとまる組み合わせです。"))
             .andExpect(jsonPath("$.items.length()").value(2))
             .andExpect(jsonPath("$.items[0].imageUrl").isString)
             // 추천 시점에는 가상 착용 이미지를 만들지 않는다. 느리고 돈이 드는 일을

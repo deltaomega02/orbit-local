@@ -87,8 +87,9 @@ class Clothes(
      * 자유 문자열로 두고 enum 을 쓰지 않았다. 옷의 소재와 핏은 계속 새 이름이
      * 생기는 영역이라, 서버가 목록을 고정하면 사용자가 자기 옷을 자기 말로 적을 수
      * 없게 된다. [season] 만은 AI 응답 단계에서 네 값으로 좁히는데, 그건 **모델이
-     * 답하는 방식**의 제약이지 사용자 입력의 제약이 아니다
-     * ([com.orbit.ai.gemini.GeminiClothingAnalyzer.SEASONS]).
+     * 답하는 방식**의 제약이지 사용자 입력의 제약이 아니다([Seasons]). 다만 아는
+     * 표기(예전 한국어 값)는 저장 직전에 표준값으로 눌러 준다 — 추천 규칙이 이
+     * 값을 직접 비교하므로 한 옷장 안에 두 언어가 섞이면 안 되기 때문이다.
      */
 
     /** 세부 종류. 셔츠·니트·맨투맨·청바지·슬랙스·코트 … [mainCategory] 를 한 단계 좁힌다. */
@@ -103,7 +104,7 @@ class Clothes(
     @Column(length = ClothesLimits.FIT)
     var fit: String? = null,
 
-    /** 어울리는 계절. 봄·가을 / 여름 / 겨울 / 사계절. */
+    /** 어울리는 계절. 표준 표기는 [Seasons] 에 있다 — 春・秋 / 夏 / 冬 / オールシーズン. */
     @Column(length = ClothesLimits.SEASON)
     var season: String? = null,
 

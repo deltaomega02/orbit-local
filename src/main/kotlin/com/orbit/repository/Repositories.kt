@@ -78,6 +78,18 @@ interface ClothesRepository : JpaRepository<Clothes, Long> {
      */
     fun countByOwnerId(ownerId: Long): Long
 
+    /**
+     * 계절 표기 마이그레이션용([com.orbit.service.SeasonBackfill]).
+     *
+     * **여기만 소유자 조건이 없다.** 표기를 바꾸는 일은 특정 사용자의 데이터를
+     * 읽거나 보여주는 일이 아니라 전체 테이블의 표기를 통일하는 일이고, 사용자별로
+     * 나눠 돌면 도중에 끊겼을 때 두 언어가 섞인 상태가 남는다. 값을 비교해 값을
+     * 바꿀 뿐이라 이 메서드로는 남의 데이터를 읽어낼 수 없다.
+     */
+    @Modifying(clearAutomatically = true)
+    @Query("update Clothes c set c.season = :to where c.season = :from")
+    fun renameSeason(@Param("from") from: String, @Param("to") to: String): Int
+
     /** 통계용. 카테고리별 개수를 한 쿼리로 센다 — 카테고리마다 따로 세면 3번 돈다. */
     @Query(
         """

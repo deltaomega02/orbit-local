@@ -9,6 +9,7 @@ import com.orbit.ai.gemini.GeminiClothingAnalyzer
 import com.orbit.ai.gemini.GeminiOutfitRecommender
 import com.orbit.ai.gemini.GeminiProperties
 import com.orbit.domain.MainCategory
+import com.orbit.domain.Seasons
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
@@ -102,16 +103,16 @@ class GeminiResponseParsingTest {
         val parsed = analyzer.parseOrFallback(
             """
             {"name":"네이비 옥스퍼드 셔츠","mainCategory":"TOP","color":"네이비",
-             "subCategory":"셔츠","material":"면","fit":"레귤러","season":"봄·가을",
-             "detail":"가슴에 작은 자수 로고"}
+             "subCategory":"シャツ","material":"コットン","fit":"レギュラー","season":"春・秋",
+             "detail":"胸に小さな刺繍のロゴ"}
             """.trimIndent(),
         )
 
-        assertEquals("셔츠", parsed.subCategory)
-        assertEquals("면", parsed.material)
-        assertEquals("레귤러", parsed.fit)
-        assertEquals("봄·가을", parsed.season)
-        assertEquals("가슴에 작은 자수 로고", parsed.detail)
+        assertEquals("シャツ", parsed.subCategory)
+        assertEquals("コットン", parsed.material)
+        assertEquals("レギュラー", parsed.fit)
+        assertEquals("春・秋", parsed.season)
+        assertEquals("胸に小さな刺繍のロゴ", parsed.detail)
     }
 
     /**
@@ -146,26 +147,40 @@ class GeminiResponseParsingTest {
 
     /**
      * 스키마의 enum 은 요청이지 보장이 아니다(mainCategory 를 이미 그렇게 다룬다).
-     * 목록 밖의 표기가 섞이면 추천 규칙의 `계절:여름` ↔ `계절:겨울` 비교가 성립하지 않는다.
+     * 목록 밖의 표기가 섞이면 추천 규칙의 `季節:夏` ↔ `季節:冬` 비교가 성립하지 않는다.
      */
     @Test
     fun `모르는 season 값은 채우지 않고 비운다`() {
         val parsed = analyzer.parseOrFallback(
-            """{"name":"셔츠","mainCategory":"TOP","season":"간절기","material":"면"}""",
+            """{"name":"シャツ","mainCategory":"TOP","season":"梅雨","material":"コットン"}""",
         )
 
         assertNull(parsed.season, "네 값 밖의 표기는 버린다")
-        assertEquals("면", parsed.material, "season 하나 때문에 다른 값까지 버리면 안 된다")
+        assertEquals("コットン", parsed.material, "season 하나 때문에 다른 값까지 버리면 안 된다")
     }
 
     @Test
     fun `허용된 season 네 값은 모두 통과한다`() {
-        listOf("봄·가을", "여름", "겨울", "사계절").forEach { season ->
+        Seasons.CANONICAL.forEach { season ->
             val parsed = analyzer.parseOrFallback(
-                """{"name":"옷","mainCategory":"TOP","season":"$season"}""",
+                """{"name":"服","mainCategory":"TOP","season":"$season"}""",
             )
             assertEquals(season, parsed.season)
         }
+    }
+
+    /**
+     * 프롬프트를 일본어로 바꿨어도 모델이 옛 표기로 답할 수 있다(캐시된 프롬프트,
+     * 재시도, 모델 교체 등). 그때 값을 버리면 사용자는 이유 없이 빈 칸을 보게 되고,
+     * 그대로 저장하면 옷장에 두 언어가 섞인다. 그래서 눌러서 받는다.
+     */
+    @Test
+    fun `옛 한국어 계절 표기로 답해도 표준 표기로 바꿔 받는다`() {
+        val parsed = analyzer.parseOrFallback(
+            """{"name":"ニット","mainCategory":"TOP","season":"겨울"}""",
+        )
+
+        assertEquals(Seasons.WINTER, parsed.season)
     }
 
     /** 컬럼 길이를 넘는 값이 폼에 들어가면, 사용자가 그대로 저장을 눌렀을 때 400 이 된다. */
