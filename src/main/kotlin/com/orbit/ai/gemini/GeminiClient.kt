@@ -44,6 +44,7 @@ data class GeminiProperties(
  */
 class GeminiClient(
     private val properties: GeminiProperties,
+    private val keyStore: GeminiKeyStore,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -57,10 +58,17 @@ class GeminiClient(
         )
         .build()
 
-    /** 키가 없으면 호출 자체를 시도하지 않는다. AI 엔드포인트만 503 이 되고 나머지는 그대로 산다. */
+    /**
+     * 키가 없으면 호출 자체를 시도하지 않는다. AI 엔드포인트만 503 이 되고 나머지는 그대로 산다.
+     *
+     * 키는 **호출 시점에** [GeminiKeyStore] 에서 읽는다. 기동 시점의 설정값을 붙들고 있으면,
+     * 사용자가 앱 안에서 키를 등록해도 재시작 전까지 계속 503 이 나간다. 실제로 그랬다.
+     * 이 앱은 받는 사람이 터미널을 쓰지 않는 것을 전제로 하므로, 키가 들어오는 정상 경로가
+     * 곧 설정 화면이다. 그 경로가 즉시 반영되지 않으면 기능이 없는 것과 같다.
+     */
     fun requireUsable() {
-        if (properties.apiKey.isBlank()) {
-            throw AiUnavailableException("GEMINI_API_KEY 가 설정되지 않았습니다")
+        if (keyStore.current().isBlank()) {
+            throw AiUnavailableException("Gemini API 키가 등록되지 않았습니다")
         }
     }
 
@@ -73,7 +81,7 @@ class GeminiClient(
                 return restClient.post()
                     .uri("/models/{model}:generateContent", model)
                     // 키를 쿼리 스트링이 아니라 헤더로 보낸다. URL 은 프록시·액세스 로그에 그대로 남는다.
-                    .header("x-goog-api-key", properties.apiKey)
+                    .header("x-goog-api-key", keyStore.current())
                     .contentType(MediaType.APPLICATION_JSON)
                     .body(body)
                     .retrieve()

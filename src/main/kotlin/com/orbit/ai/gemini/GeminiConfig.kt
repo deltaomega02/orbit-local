@@ -28,7 +28,8 @@ import org.springframework.context.annotation.Configuration
 class GeminiConfig {
 
     @Bean
-    fun geminiClient(properties: GeminiProperties) = GeminiClient(properties)
+    fun geminiClient(properties: GeminiProperties, keyStore: GeminiKeyStore) =
+        GeminiClient(properties, keyStore)
 
     @Bean
     fun clothingAnalyzer(

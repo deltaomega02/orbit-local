@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.orbit.ai.RecommendCandidate
 import com.orbit.ai.RecommendRequest
 import com.orbit.ai.gemini.GeminiClient
+import com.orbit.ai.gemini.GeminiKeyStore
 import com.orbit.ai.gemini.GeminiClothingAnalyzer
 import com.orbit.ai.gemini.GeminiOutfitRecommender
 import com.orbit.ai.gemini.GeminiProperties
@@ -29,7 +30,8 @@ class GeminiResponseParsingTest {
 
     private val objectMapper = ObjectMapper()
     private val properties = GeminiProperties(apiKey = "")
-    private val client = GeminiClient(properties)
+    // 이 테스트는 파싱만 검증한다. 네트워크를 타지 않으므로 키 저장소도 빈 것으로 둔다.
+    private val client = GeminiClient(properties, GeminiKeyStore())
 
     private val recommender = GeminiOutfitRecommender(client, properties, objectMapper)
     private val analyzer = GeminiClothingAnalyzer(client, properties, objectMapper)

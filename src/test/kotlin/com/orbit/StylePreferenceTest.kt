@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.orbit.ai.RecommendCandidate
 import com.orbit.ai.RecommendRequest
 import com.orbit.ai.gemini.GeminiClient
+import com.orbit.ai.gemini.GeminiKeyStore
 import com.orbit.ai.gemini.GeminiOutfitRecommender
 import com.orbit.ai.gemini.GeminiProperties
 import com.orbit.domain.MainCategory
@@ -49,7 +50,8 @@ import kotlin.test.assertTrue
 class StylePreferencePromptTest {
 
     private val properties = GeminiProperties(apiKey = "")
-    private val recommender = GeminiOutfitRecommender(GeminiClient(properties), properties, ObjectMapper())
+    private val recommender =
+        GeminiOutfitRecommender(GeminiClient(properties, GeminiKeyStore()), properties, ObjectMapper())
 
     private val candidates = listOf(
         RecommendCandidate(1L, "흰 셔츠", MainCategory.TOP, "화이트"),
