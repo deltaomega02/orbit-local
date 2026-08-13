@@ -16,7 +16,7 @@ H2(기본) / MySQL(프로파일) · Gemini API · 바닐라 JS 프론트 · JUni
 ## 실행
 
 ```bash
-./gradlew test          # 테스트 223개
+./gradlew test          # 테스트 237개
 ./gradlew bootRun       # http://127.0.0.1:8080 (H2 파일 DB — 아래 "데이터가 어디에 있나")
 ```
 
