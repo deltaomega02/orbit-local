@@ -1390,3 +1390,22 @@ input:focus-visible, textarea:focus-visible { outline: 2px solid var(--ink); out
   .note__spinner,
   .action.is-busy .action__spinner { animation: spin 1.4s linear infinite !important; }
 }
+
+
+/* 착용 이미지의 세로 비율은 생성 결과에 따라 들쭉날쭉하다(3:4 를 요구하지만
+   모델이 늘 지키지는 않는다). 3:4 칸에 cover 로 채우면 세로로 긴 결과에서
+   위아래가 잘리는데, 그때 가장 먼저 사라지는 것이 얼굴이다. 실제로 655x1600
+   결과에서 머리가 통째로 잘렸다.
+   목록에서는 위를 기준으로 잘라 얼굴을 지키고, 상세에서는 아예 자르지 않는다. */
+.frame--look > img { object-position: center top; }
+
+[data-media-pane="tryon"] {
+  aspect-ratio: auto;
+  background: var(--paper-sunk);
+}
+[data-media-pane="tryon"] > img {
+  position: static;
+  width: 100%;
+  height: auto;
+  object-fit: contain;
+}
