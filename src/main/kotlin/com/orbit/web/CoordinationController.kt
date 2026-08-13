@@ -103,6 +103,26 @@ data class DuplicateResponse(
     val clothesIds: Set<Long>,
 )
 
+/**
+ * 오늘 만들 수 있는 조합을 다 썼을 때의 409. **[DuplicateResponse] 와 같은 상태 코드지만
+ * 다른 사건이다.**
+ *
+ * | | 뜻 | 사용자가 할 일 |
+ * |---|---|---|
+ * | `duplicate` | 이번 추천이 하필 오늘 나온 조합과 겹쳤다 | 다시 눌러 본다 (`retry: true`) |
+ * | `exhausted` | 옷장으로 만들 수 있는 조합을 오늘 다 썼다 | 옷을 더 등록하거나 내일 다시 |
+ *
+ * 둘을 한 코드로 뭉뚱그리면 클라이언트는 "재시도"만 알게 되고, 아무리 눌러도 결과가
+ * 같은 상태에서 계속 누르게 된다(그게 실제로 벌어진 일이다 — 3번 호출, 40초).
+ * `error` 값으로 구분하고, `retry: false` 를 함께 실어 **재시도 여부만 보는 클라이언트도
+ * 틀리지 않게** 한다. `detail` 은 화면에 그대로 띄울 수 있는 한국어 한 문장이다.
+ */
+data class ExhaustedResponse(
+    val error: String = "exhausted",
+    val retry: Boolean = false,
+    val detail: String,
+)
+
 @RestController
 @RequestMapping("/api/coordinations")
 @Validated
@@ -114,8 +134,11 @@ class CoordinationController(
     /**
      * AI 추천. 본문이 없다 — 서버가 옷장 전체를 후보로 삼기 때문에 클라이언트가
      * 보낼 값이 없다. 응답 계약은 수동 생성과 완전히 같고, 중복이면 여기서도
-     * 409 + `retry: true` 가 나간다. 클라이언트 입장에서는 "추천을 다시 눌러라"
-     * 하나로 처리가 끝난다.
+     * 409 + `retry: true` 가 나간다.
+     *
+     * 409 가 하나 더 있다 — [ExhaustedResponse]. "다시 눌러 볼 만하다"(duplicate)와
+     * "더 눌러도 소용없다"(exhausted)는 사용자가 할 일이 다르므로 `error` 로 갈린다.
+     * 후자는 AI 를 부르기 전에 판정되므로 기다림도 과금도 없다.
      */
     @PostMapping("/recommend")
     fun recommend(@AuthenticationPrincipal user: AuthenticatedUser): ResponseEntity<CoordinationResponse> {

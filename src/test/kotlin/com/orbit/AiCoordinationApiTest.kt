@@ -186,11 +186,16 @@ class AiCoordinationApiTest {
      * 이 프로젝트의 시그니처 계약. 추천 엔진은 확률적이라 같은 조합을 다시 내놓을 수
      * 있고, 프롬프트로 "피해라"라고 말하는 것만으로는 보장이 되지 않는다.
      * 서버가 당일 코디와 집합 비교로 판정하고 409 + retry 를 돌려준다.
+     *
+     * 옷장을 상의1·하의2 로 두는 것이 이 테스트의 전제다. 상의1·하의1 이면 두 번째
+     * 추천은 AI 를 부르기도 전에 `exhausted` 로 끊기므로(아래 테스트) 여기서 보려는
+     * "불렀더니 하필 겹쳤다"가 성립하지 않는다. **아직 조합이 남아 있을 때만 duplicate 다.**
      */
     @Test
     fun `AI 가 오늘 나온 조합을 다시 내놓으면 409 와 retry true 다`() {
         val top = addClothes(me, "셔츠", "TOP")
         val bottom = addClothes(me, "슬랙스", "BOTTOM")
+        addClothes(me, "청바지", "BOTTOM") // 조합은 2가지 — 하나를 써도 아직 남는다
         recommend().andExpect(status().isCreated)
 
         recommender.behavior = { OutfitSuggestion("또 같은 코디", "같은 이유", listOf(top, bottom)) }
@@ -200,6 +205,81 @@ class AiCoordinationApiTest {
             .andExpect(jsonPath("$.error").value("duplicate"))
             .andExpect(jsonPath("$.retry").value(true))
             .andExpect(jsonPath("$.clothesIds.length()").value(2))
+
+        assertEquals(2, recommender.calls, "남은 조합이 있으면 AI 를 부르는 것이 맞다")
+    }
+
+    /**
+     * duplicate 와 exhausted 를 가르는 지점.
+     *
+     * 상의1·하의1 이면 가능한 조합은 **산수로 1개**다. 그런데도 두 번째 추천에서
+     * AI 를 부르고 409 duplicate 를 받고 클라이언트가 재시도하기를 반복하면, 결과가
+     * 정해져 있는 상태에서 호출 3번과 40초가 확정적으로 낭비된다. 신규 사용자가 가장
+     * 먼저 마주치는 상태라 더 그렇다. 그래서 호출 **전에** 판정한다.
+     */
+    @Test
+    fun `상의1 하의1 이면 두 번째 추천은 AI 를 부르지 않고 exhausted 다`() {
+        addClothes(me, "셔츠", "TOP")
+        addClothes(me, "슬랙스", "BOTTOM")
+
+        recommend().andExpect(status().isCreated)
+        assertEquals(1, recommender.calls)
+
+        recommend()
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.error").value("exhausted"))
+            // duplicate 와 달리 재시도가 소용없다. 두 사건을 클라이언트가 구분할 수 있어야 한다.
+            .andExpect(jsonPath("$.retry").value(false))
+            .andExpect(jsonPath("$.detail").isString)
+
+        assertEquals(1, recommender.calls, "가능한 조합이 없으면 AI 를 부르기 전에 끊는다")
+    }
+
+    /**
+     * 조합 수의 기준이 실제 추천 규칙(상의1 · 하의1 · 아우터는 선택)과 맞는지 본다.
+     * 아우터가 한 벌 들어오면 조합은 1×1×(1+1)=2 가지가 되므로, 두 번째 추천은
+     * exhausted 가 아니어야 한다 — 여기서 막으면 사용자에게서 가능한 조합을 빼앗는다.
+     */
+    @Test
+    fun `아우터는 선택이라 조합 수를 두 배로 늘린다`() {
+        val top = addClothes(me, "셔츠", "TOP")
+        val bottom = addClothes(me, "슬랙스", "BOTTOM")
+        val outer = addClothes(me, "코트", "OUTER")
+
+        // 1) 상의 + 하의
+        recommend().andExpect(status().isCreated)
+
+        // 2) 아직 상의 + 하의 + 아우터가 남아 있다. AI 를 불러야 한다.
+        recommender.behavior = { OutfitSuggestion("코트 코디", "쌀쌀해서", listOf(top, bottom, outer)) }
+        recommend().andExpect(status().isCreated)
+        assertEquals(2, recommender.calls)
+
+        // 3) 이제 두 가지를 다 썼다.
+        recommend()
+            .andExpect(status().isConflict)
+            .andExpect(jsonPath("$.error").value("exhausted"))
+        assertEquals(2, recommender.calls)
+    }
+
+    /**
+     * 수동 생성은 추천 규칙을 따르지 않는다(하의 없이도 만들 수 있다). 그런 코디를
+     * 조합 수에 세면 아직 남은 조합이 있는데도 "다 봤다"고 막게 된다.
+     */
+    @Test
+    fun `추천이 만들 수 없는 모양의 수동 코디는 조합 수로 세지 않는다`() {
+        val top = addClothes(me, "셔츠", "TOP")
+        addClothes(me, "슬랙스", "BOTTOM")
+
+        mockMvc.perform(
+            post("/api/coordinations")
+                .header(HttpHeaders.AUTHORIZATION, me.bearer)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsString(mapOf("title" to "상의만", "clothesIds" to listOf(top)))),
+        ).andExpect(status().isCreated)
+
+        // 상의만 있는 코디는 추천이 만들 수 있는 조합(상의1+하의1)을 소비하지 않았다
+        recommend().andExpect(status().isCreated)
+        assertEquals(1, recommender.calls)
     }
 
     /** 3계층 방어의 첫 겹. 프롬프트에 오늘 조합이 실제로 실려 나가는지 확인한다. */

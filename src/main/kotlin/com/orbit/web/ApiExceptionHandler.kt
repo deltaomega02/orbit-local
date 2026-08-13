@@ -7,6 +7,7 @@ import com.orbit.media.ImageTooLargeException
 import com.orbit.media.UnsupportedImageTypeException
 import com.orbit.security.InvalidTokenException
 import com.orbit.service.ClothesNotFoundException
+import com.orbit.service.CombinationsExhaustedException
 import com.orbit.service.CoordinationNotFoundException
 import com.orbit.service.DuplicateCoordinationException
 import com.orbit.service.EmailAlreadyUsedException
@@ -35,6 +36,20 @@ class ApiExceptionHandler {
     @ExceptionHandler(DuplicateCoordinationException::class)
     fun handleDuplicate(e: DuplicateCoordinationException): ResponseEntity<DuplicateResponse> =
         ResponseEntity.status(HttpStatus.CONFLICT).body(DuplicateResponse(clothesIds = e.clothesIds))
+
+    /**
+     * 409 `exhausted`. duplicate 와 상태 코드는 같지만 **다른 사건**이라 error 코드를
+     * 나눈다([ExhaustedResponse]). 여기서 duplicate 로 뭉뚱그리면 클라이언트는
+     * "다시 시도"밖에 못 하고, 아무리 눌러도 결과가 같은 상태에서 계속 누르게 된다.
+     */
+    @ExceptionHandler(CombinationsExhaustedException::class)
+    fun handleExhausted(e: CombinationsExhaustedException): ResponseEntity<ExhaustedResponse> =
+        ResponseEntity.status(HttpStatus.CONFLICT).body(
+            ExhaustedResponse(
+                detail = "오늘 만들 수 있는 조합 ${e.possible}가지를 모두 봤어요. " +
+                    "옷을 더 등록하면 새로운 조합이 나와요.",
+            ),
+        )
 
     @ExceptionHandler(UnknownClothesException::class)
     fun handleUnknown(e: UnknownClothesException): ResponseEntity<ErrorResponse> =
