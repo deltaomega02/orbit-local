@@ -1,10 +1,12 @@
 package com.orbit.web
 
 import com.orbit.domain.Clothes
+import com.orbit.domain.ClothesLimits
 import com.orbit.domain.MainCategory
 import com.orbit.media.MediaStorage
 import com.orbit.security.AuthenticatedUser
 import com.orbit.service.ClothesService
+import com.orbit.service.ClothesTraits
 import com.orbit.service.CoordinationService
 import com.orbit.service.OutfitAiService
 import jakarta.validation.Valid
@@ -20,33 +22,67 @@ import org.springframework.web.bind.annotation.*
 import org.springframework.web.multipart.MultipartFile
 import java.time.Instant
 
+/*
+ * 옷의 서술 속성(색·종류·소재·핏·계절·한 줄 요약)은 **전부 선택이고 전부 수정 가능**하다.
+ *
+ * 대부분을 사진 분석이 채우기 때문이다. AI 가 채운 값은 틀릴 수 있고, 틀렸을 때
+ * 사용자가 고칠 길이 없으면 남는 선택지는 "옷을 지우고 다시 등록"뿐이다. 그래서
+ * 등록·수정·분석 세 곳이 같은 필드 집합을 다룬다 — 한 곳에서만 빠져도 그 필드는
+ * 사실상 읽기 전용이 된다.
+ */
 data class CreateClothesRequest(
-    @field:NotBlank @field:Size(max = 60) val name: String,
+    @field:NotBlank @field:Size(max = ClothesLimits.NAME) val name: String,
     val mainCategory: MainCategory,
-    @field:Size(max = 30) val color: String? = null,
-    @field:Size(max = 200) val detail: String? = null,
-)
+    @field:Size(max = ClothesLimits.COLOR) val color: String? = null,
+    @field:Size(max = ClothesLimits.SUB_CATEGORY) val subCategory: String? = null,
+    @field:Size(max = ClothesLimits.MATERIAL) val material: String? = null,
+    @field:Size(max = ClothesLimits.FIT) val fit: String? = null,
+    @field:Size(max = ClothesLimits.SEASON) val season: String? = null,
+    @field:Size(max = ClothesLimits.DETAIL) val detail: String? = null,
+) {
+    fun toTraits() = ClothesTraits(color, subCategory, material, fit, season, detail)
+}
 
-/** PATCH. 넘어오지 않은(=null) 필드는 건드리지 않는다. */
+/**
+ * PATCH. **넘어오지 않은(=null) 필드는 건드리지 않고, 빈 문자열은 지운다.**
+ *
+ * 규칙이 원래 color·detail 만의 것이었는데 새 속성도 같은 규칙을 따른다. 필드마다
+ * 규칙이 다르면 클라이언트가 그걸 전부 외워야 하고, 외우다 틀리면 지우려던 값이
+ * 그대로 남는다.
+ */
 data class UpdateClothesRequest(
-    @field:Size(min = 1, max = 60) val name: String? = null,
+    @field:Size(min = 1, max = ClothesLimits.NAME) val name: String? = null,
     val mainCategory: MainCategory? = null,
-    @field:Size(max = 30) val color: String? = null,
-    /**
-     * 소재·핏. 사진 분석이 채워 주는 값이라 **틀렸을 때 고칠 수 있어야 한다.**
-     * 이것만 수정에서 빠져 있으면, AI 가 잘못 적어 넣은 문장을 사용자가
-     * 지우고 다시 등록하는 수밖에 없다.
-     * null = 그대로 두기, 빈 문자열 = 지우기. color 와 같은 규칙이다.
-     */
-    @field:Size(max = 200) val detail: String? = null,
-)
+    @field:Size(max = ClothesLimits.COLOR) val color: String? = null,
+    @field:Size(max = ClothesLimits.SUB_CATEGORY) val subCategory: String? = null,
+    @field:Size(max = ClothesLimits.MATERIAL) val material: String? = null,
+    @field:Size(max = ClothesLimits.FIT) val fit: String? = null,
+    @field:Size(max = ClothesLimits.SEASON) val season: String? = null,
+    @field:Size(max = ClothesLimits.DETAIL) val detail: String? = null,
+) {
+    fun toTraits() = ClothesTraits(color, subCategory, material, fit, season, detail)
+}
 
 data class ClothesResponse(
     val id: Long,
     val name: String,
     val mainCategory: MainCategory,
     val color: String?,
-    /** 소재·핏·상황. 추천 품질에 직접 쓰이므로 응답에도 노출해 사용자가 고칠 수 있게 한다. */
+    /*
+     * 아래 네 개는 **비어 있을 수 있다(대부분 null 이다).** 속성이 생기기 전에 등록된
+     * 옷은 전부 null 이고, 사용자가 채우지 않을 수도 있다. 화면은 값이 없는 항목을
+     * 그리지 않으면 된다 — 서버가 "-" 같은 자리 채우기를 내려보내면 그건 데이터가
+     * 아니라 표현이고, 어떻게 보일지는 화면이 정할 일이다.
+     */
+    /** 셔츠·니트·청바지·코트 … [mainCategory] 를 한 단계 좁힌 종류. */
+    val subCategory: String?,
+    /** 면·울 혼방·데님·리넨·기모 … */
+    val material: String?,
+    /** 오버핏·슬림·와이드·레귤러 … */
+    val fit: String?,
+    /** 봄·가을 / 여름 / 겨울 / 사계절. 사용자가 직접 적으면 그 밖의 값도 들어올 수 있다. */
+    val season: String?,
+    /** 위 축으로 나뉘지 않는 한 줄 요약. 추천 프롬프트에 그대로 실린다. */
     val detail: String?,
     /** 사진이 없으면 null. 클라이언트는 이 값으로 플레이스홀더 표시 여부를 판단한다. */
     val imageUrl: String?,
@@ -58,6 +94,10 @@ data class ClothesResponse(
             name = c.name,
             mainCategory = c.mainCategory,
             color = c.color,
+            subCategory = c.subCategory,
+            material = c.material,
+            fit = c.fit,
+            season = c.season,
             detail = c.detail,
             imageUrl = mediaUrl(c.imagePath),
             createdAt = c.createdAt,
@@ -91,11 +131,24 @@ data class WardrobeStatsResponse(
     val neverUsed: Long,
 )
 
-/** 사진 분석 결과. 저장하지 않고 등록 폼을 미리 채우는 데만 쓴다. */
+/**
+ * 사진 분석 결과. **저장하지 않고 등록 폼을 미리 채우는 데만 쓴다.**
+ *
+ * 필드가 [CreateClothesRequest] 와 같은 이름·같은 뜻이다(이미지 제외). 화면이
+ * 이 응답을 그대로 폼에 부어 넣고, 사용자가 고친 뒤 등록으로 되돌려 보내기 때문이다.
+ * 이름이 어긋나면 그 매핑을 화면이 손으로 해야 하고, 그 손이 새 필드를 빠뜨린다.
+ *
+ * 이름·카테고리를 뺀 나머지는 null 일 수 있다. 모델이 답하지 않았거나, 답한 값이
+ * 우리가 아는 형식이 아니었다는 뜻이다. 화면은 그 칸을 비워 두면 된다.
+ */
 data class ClothesAnalysisResponse(
     val name: String,
     val mainCategory: MainCategory,
     val color: String?,
+    val subCategory: String?,
+    val material: String?,
+    val fit: String?,
+    val season: String?,
     val detail: String?,
 )
 
@@ -153,7 +206,7 @@ class ClothesController(
         @AuthenticationPrincipal user: AuthenticatedUser,
         @Valid @RequestBody request: CreateClothesRequest,
     ): ResponseEntity<ClothesResponse> {
-        val created = service.create(user.id, request.name, request.mainCategory, request.color, null, request.detail)
+        val created = service.create(user.id, request.name, request.mainCategory, request.toTraits())
         return ResponseEntity.status(HttpStatus.CREATED).body(ClothesResponse.from(created))
     }
 
@@ -171,17 +224,43 @@ class ClothesController(
         @RequestParam("name") name: String,
         @RequestParam("mainCategory") mainCategory: MainCategory,
         @RequestParam("color", required = false) color: String?,
+        @RequestParam("subCategory", required = false) subCategory: String?,
+        @RequestParam("material", required = false) material: String?,
+        @RequestParam("fit", required = false) fit: String?,
+        @RequestParam("season", required = false) season: String?,
         @RequestParam("detail", required = false) detail: String?,
         @RequestPart("image", required = false) image: MultipartFile?,
     ): ResponseEntity<ClothesResponse> {
-        // multipart 폼 필드에는 @Valid 가 걸리지 않으므로 JSON 쪽과 같은 제약을 손으로 맞춘다.
-        require(name.isNotBlank() && name.length <= 60) { "name 은 1~60자여야 합니다" }
-        require((color?.length ?: 0) <= 30) { "color 는 30자를 넘을 수 없습니다" }
+        /*
+         * multipart 폼 필드에는 `@Valid` 가 걸리지 않으므로 JSON 쪽과 같은 제약을 손으로 맞춘다.
+         *
+         * 상한값을 [ClothesLimits] 에서 가져오는 것이 요점이다. 여기에 숫자를 다시 적으면
+         * 컬럼·`@Size`·이 검사가 세 벌이 되고, 어긋나는 날 검증을 통과한 값이 INSERT 에서
+         * 터진다(사용자에게는 500 으로 보인다). 넘치는 값은 서비스가 잘라내기도 하므로
+         * 이 검사는 "조용히 잘리지 않고 400 으로 알려 준다"는 쪽에 가깝다.
+         */
+        require(name.isNotBlank() && name.length <= ClothesLimits.NAME) { "name 은 1~${ClothesLimits.NAME}자여야 합니다" }
+        requireMaxLength("color", color, ClothesLimits.COLOR)
+        requireMaxLength("subCategory", subCategory, ClothesLimits.SUB_CATEGORY)
+        requireMaxLength("material", material, ClothesLimits.MATERIAL)
+        requireMaxLength("fit", fit, ClothesLimits.FIT)
+        requireMaxLength("season", season, ClothesLimits.SEASON)
+        requireMaxLength("detail", detail, ClothesLimits.DETAIL)
 
         val imagePath = image?.takeIf { !it.isEmpty }
             ?.let { mediaStorage.store("clothes", it.bytes, it.contentType).relativePath }
-        val created = service.create(user.id, name, mainCategory, color, imagePath, detail)
+        val created = service.create(
+            ownerId = user.id,
+            name = name,
+            mainCategory = mainCategory,
+            traits = ClothesTraits(color, subCategory, material, fit, season, detail),
+            imagePath = imagePath,
+        )
         return ResponseEntity.status(HttpStatus.CREATED).body(ClothesResponse.from(created))
+    }
+
+    private fun requireMaxLength(field: String, value: String?, max: Int) {
+        require((value?.length ?: 0) <= max) { "$field 은(는) ${max}자를 넘을 수 없습니다" }
     }
 
     /**
@@ -204,6 +283,10 @@ class ClothesController(
             name = analysis.name,
             mainCategory = analysis.mainCategory,
             color = analysis.color,
+            subCategory = analysis.subCategory,
+            material = analysis.material,
+            fit = analysis.fit,
+            season = analysis.season,
             detail = analysis.detail,
         )
     }
@@ -282,7 +365,7 @@ class ClothesController(
         @Valid @RequestBody request: UpdateClothesRequest,
     ): ClothesResponse =
         ClothesResponse.from(
-            service.update(user.id, id, request.name, request.mainCategory, request.color, request.detail),
+            service.update(user.id, id, request.name, request.mainCategory, request.toTraits()),
         )
 
     @DeleteMapping("/{id}")

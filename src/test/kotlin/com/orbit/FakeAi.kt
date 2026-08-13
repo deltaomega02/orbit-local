@@ -36,7 +36,7 @@ fun pngBytes(size: Int = 4): ByteArray {
 class FakeClothingAnalyzer : ClothingAnalyzer {
     var calls = 0
     var lastMime: String? = null
-    var result = ClothingAnalysis("흰 린넨 셔츠", MainCategory.TOP, "화이트", "린넨 소재의 여름 셔츠")
+    var result = defaultResult()
 
     override fun analyze(image: ByteArray, mime: String): ClothingAnalysis {
         calls++
@@ -47,7 +47,25 @@ class FakeClothingAnalyzer : ClothingAnalyzer {
     fun reset() {
         calls = 0
         lastMime = null
-        result = ClothingAnalysis("흰 린넨 셔츠", MainCategory.TOP, "화이트", "린넨 소재의 여름 셔츠")
+        result = defaultResult()
+    }
+
+    companion object {
+        /**
+         * 기본 분석 결과. 속성축이 **전부 채워진** 경우다 — 등록 폼이 그 값을 그대로
+         * 받는지 확인하려면 기본값에 값이 있어야 한다. 일부만 오는 경우는 테스트가
+         * [result] 를 직접 갈아끼워 만든다.
+         */
+        fun defaultResult() = ClothingAnalysis(
+            name = "흰 린넨 셔츠",
+            mainCategory = MainCategory.TOP,
+            color = "화이트",
+            detail = "린넨 소재의 여름 셔츠",
+            subCategory = "셔츠",
+            material = "린넨",
+            fit = "레귤러",
+            season = "여름",
+        )
     }
 }
 

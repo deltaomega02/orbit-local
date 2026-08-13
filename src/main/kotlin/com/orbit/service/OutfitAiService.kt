@@ -103,7 +103,17 @@ class OutfitAiService(
         val suggestion = recommender.recommend(
             RecommendRequest(
                 candidates = wardrobe.map {
-                    RecommendCandidate(requireNotNull(it.id), it.name, it.mainCategory, it.color, it.detail)
+                    RecommendCandidate(
+                        id = requireNotNull(it.id),
+                        name = it.name,
+                        mainCategory = it.mainCategory,
+                        color = it.color,
+                        detail = it.detail,
+                        subCategory = it.subCategory,
+                        material = it.material,
+                        fit = it.fit,
+                        season = it.season,
+                    )
                 },
                 avoidCombinations = today.map { it.clothesIdSet() },
                 // 저장만 하고 쓰지 않으면 설정 화면이 장식이 된다. 이 값이 실제로

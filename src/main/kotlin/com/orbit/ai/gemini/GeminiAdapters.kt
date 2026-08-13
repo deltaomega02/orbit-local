@@ -9,6 +9,7 @@ import com.orbit.ai.OutfitRecommender
 import com.orbit.ai.OutfitSuggestion
 import com.orbit.ai.RecommendRequest
 import com.orbit.ai.TryOnImageGenerator
+import com.orbit.domain.ClothesLimits
 import com.orbit.domain.MainCategory
 import com.orbit.media.ImageType
 import org.slf4j.LoggerFactory
@@ -22,6 +23,9 @@ private fun userContent(vararg parts: Map<String, Any?>): List<Map<String, Any?>
     listOf(mapOf("role" to "user", "parts" to parts.toList()))
 
 private fun textPart(text: String): Map<String, Any?> = mapOf("text" to text)
+
+/** 공백만 있는 값은 없는 것으로 본다 — 프롬프트에 빈 항목을 넣지 않기 위해서다. */
+private fun String.blankToNull(): String? = takeIf { it.isNotBlank() }
 
 private fun imagePart(bytes: ByteArray, mime: String): Map<String, Any?> =
     mapOf("inlineData" to mapOf("mimeType" to mime, "data" to BASE64.encodeToString(bytes)))
@@ -69,6 +73,10 @@ class GeminiClothingAnalyzer(
                         [무엇을 볼 것인가]
                         - 사진에 옷이 여러 벌 보이면 **화면에서 가장 크고 중심에 있는 한 벌**만 대상으로 한다.
                         - 사람이 입고 있어도 사람이 아니라 옷을 기록한다. 얼굴·배경·소품은 무시한다.
+                        - **카테고리마다 봐야 할 곳이 다르다.** 아래에서 정한 mainCategory 의 줄만 본다.
+                          TOP    — 목라인(라운드·브이·카라·터틀), 소매 길이, 짜임의 두께와 비침
+                          BOTTOM — 밑단 폭(스트레이트·와이드·테이퍼드), 기장, 원단의 두께와 힘
+                          OUTER  — 여밈(지퍼·단추·오픈), 칼라 모양, 두께·안감·충전재로 짐작되는 보온성
 
                         [name] 20자 이내. "색 + 특징 + 종류" 순서로 쓴다.
                           좋은 예: "네이비 옥스퍼드 셔츠", "연청 와이드 데님"
@@ -84,13 +92,36 @@ class GeminiClothingAnalyzer(
                         [color] 한국어 대표색 **한 단어**. 무늬가 있으면 바탕의 주된 색을 쓴다.
                           허용 예: 화이트 블랙 그레이 네이비 베이지 브라운 카키 아이보리 연청 진청 레드 핑크 그린 블루
 
-                        [detail] 한 문장, 60자 이내. **추천에 실제로 쓰일 정보만** 담는다 —
-                          소재감(면·니트·데님·리넨·기모), 핏(오버·슬림·와이드), 두께,
-                          어울리는 계절과 상황. 감상이나 칭찬은 쓰지 마라.
-                          좋은 예: "도톰한 기모 소재로 겨울 캐주얼에 적합한 오버핏"
+                        [subCategory] 옷의 종류를 **한 단어**로. mainCategory 를 한 단계 좁힌 이름이다.
+                          TOP    예: 셔츠 니트 맨투맨 후드티 티셔츠 블라우스 원피스
+                          BOTTOM 예: 청바지 슬랙스 치노팬츠 조거팬츠 반바지 치마
+                          OUTER  예: 코트 패딩 자켓 블레이저 가디건 집업후디 무스탕
+
+                        [material] 소재를 **한 단어**로. 위에서 본 짜임·두께·광택이 근거다.
+                          예: 면 린넨 데님 울 니트 기모 폴리 코듀로이 가죽 나일론 트위드
+                          여러 소재가 섞여 보이면 "울 혼방"처럼 대표 소재에 "혼방"을 붙인다.
+
+                        [fit] 실루엣을 **한 단어**로. 어깨선·품·밑단 폭이 근거다.
+                          TOP·OUTER 예: 오버핏 레귤러 슬림 크롭 박시
+                          BOTTOM    예: 와이드 스트레이트 테이퍼드 슬림 부츠컷
+
+                        [season] 아래 넷 중 **하나만** 고른다. 소재와 두께가 근거다.
+                          여름    — 얇고 비치거나 통기성이 좋다 (린넨·시어서커·반팔·민소매)
+                          겨울    — 두껍거나 기모·충전재·안감이 보인다 (패딩·두꺼운 니트·코트)
+                          봄·가을 — 그 사이. 얇은 겉옷, 도톰하지 않은 긴팔
+                          사계절  — 두께가 중간이고 계절을 타지 않는다 (기본 면티·데님·슬랙스)
+
+                        [detail] 한 문장, 60자 이내. **위 항목으로 나뉘지 않는 것**을 적는다 —
+                          자수·프린트·포켓·단추 같은 눈에 띄는 디테일이나 어울리는 상황.
+                          이미 답한 소재·핏·계절을 그대로 반복하지 말고, 덧붙일 것이 없으면
+                          그 옷을 한 줄로 요약한다. 감상이나 칭찬은 쓰지 마라.
+                          좋은 예: "가슴에 작은 자수 로고, 단추를 풀면 캐주얼하게도 입는다"
                           나쁜 예: "정말 예쁘고 스타일리시한 옷입니다"
 
-                        확신이 없어도 비워두지 말고 사진에서 보이는 근거로 가장 그럴듯한 값을 골라라.
+                        [금지]
+                        - 항목을 비워 두는 것. **확신이 없어도 사진에서 보이는 근거로 가장 그럴듯한 값을 고른다.**
+                        - 한 항목에 값을 여러 개 나열하는 것("면 또는 폴리", "슬림/레귤러").
+                        - 사진에 없는 것을 지어내는 것(브랜드명, 가격, 라벨에 적혀 있을 법한 문구).
                         """.trimIndent(),
                     ),
                     imagePart(image, mime),
@@ -103,8 +134,20 @@ class GeminiClothingAnalyzer(
                             "name" to mapOf("type" to "STRING"),
                             "mainCategory" to mapOf("type" to "STRING", "enum" to MainCategory.entries.map { it.name }),
                             "color" to mapOf("type" to "STRING"),
+                            "subCategory" to mapOf("type" to "STRING"),
+                            "material" to mapOf("type" to "STRING"),
+                            "fit" to mapOf("type" to "STRING"),
+                            // season 만 enum 으로 좁힌다. 나머지 속성은 새 이름이 계속
+                            // 생기는 영역이지만, 계절은 넷뿐이고 추천 규칙이 이 값을
+                            // 직접 비교하기 때문이다("여름 상의에 겨울 하의"). 표기가
+                            // "봄가을"·"간절기"로 흔들리면 그 비교가 성립하지 않는다.
+                            "season" to mapOf("type" to "STRING", "enum" to SEASONS),
                             "detail" to mapOf("type" to "STRING"),
                         ),
+                        // required 를 늘리지 않는다. 스키마로 강제하면 모델은 값을
+                        // 만들어 내서라도 채우는데, 그건 "비우지 마라"를 프롬프트로
+                        // 부탁하는 것과 결과가 다르다 — 근거 없는 값이 폼에 들어온다.
+                        // 이름과 카테고리는 없으면 폼 자체가 성립하지 않아 예외다.
                         "required" to listOf("name", "mainCategory"),
                     ),
                 ),
@@ -117,23 +160,44 @@ class GeminiClothingAnalyzer(
     /**
      * 파싱을 따로 뺀 이유는 테스트 때문이다. "모델이 JSON 이 아닌 걸 돌려줬을 때"를
      * 검증하려면 이 함수만 부르면 되고, 그 확인에 네트워크가 필요할 이유가 없다.
+     *
+     * **일부 항목만 오는 것은 실패가 아니다.** required 가 name·mainCategory 뿐이라
+     * 나머지는 정상적으로 빠질 수 있고, 빠진 자리는 null 로 둔 채 폼을 채운다.
+     * 폴백으로 넘어가는 것은 JSON 자체를 못 읽었을 때뿐이다.
      */
     internal fun parseOrFallback(rawText: String): ClothingAnalysis = runCatching {
         val json = objectMapper.readTree(rawText)
         ClothingAnalysis(
-            name = json.path("name").asText("").ifBlank { "새 옷" },
+            name = json.text("name", ClothesLimits.NAME) ?: "새 옷",
             mainCategory = MainCategory.entries
                 .firstOrNull { it.name == json.path("mainCategory").asText("") }
                 ?: MainCategory.TOP,
-            color = json.path("color").asText("").ifBlank { null },
-            detail = json.path("detail").asText("").ifBlank { null },
+            color = json.text("color", ClothesLimits.COLOR),
+            detail = json.text("detail", ClothesLimits.DETAIL),
+            subCategory = json.text("subCategory", ClothesLimits.SUB_CATEGORY),
+            material = json.text("material", ClothesLimits.MATERIAL),
+            fit = json.text("fit", ClothesLimits.FIT),
+            // 스키마의 enum 은 요청이지 보장이 아니다(mainCategory 를 이미 그렇게 다룬다).
+            // 목록 밖의 값이 오면 채우지 않고 비운다 — 사용자가 직접 고르면 되고,
+            // 추천 규칙이 비교하는 값에 "봄가을"·"간절기" 같은 변종이 섞이는 편이 나쁘다.
+            season = json.text("season", ClothesLimits.SEASON)?.takeIf { it in SEASONS },
         )
     }.getOrElse {
         log.warn("의류 분석 응답 파싱 실패, 기본값으로 대체한다", it)
         FALLBACK
     }
 
+    /** 공백만 있는 값은 없는 것으로 본다. 길이는 저장될 컬럼에 맞춰 미리 자른다. */
+    private fun JsonNode.text(field: String, max: Int): String? =
+        path(field).asText("").trim().ifBlank { null }?.take(max)
+
     internal companion object {
+        /**
+         * season 의 허용 값. **프롬프트·responseSchema·파싱이 이 하나를 본다.**
+         * 세 곳에 따로 적으면 스키마에는 있는데 파싱이 버리는 값이 생긴다.
+         */
+        val SEASONS = listOf("봄·가을", "여름", "겨울", "사계절")
+
         val FALLBACK = ClothingAnalysis("새 옷", MainCategory.TOP, null, "AI 가 사진을 해석하지 못했습니다. 직접 입력해 주세요.")
     }
 }
@@ -207,18 +271,32 @@ class GeminiOutfitRecommender(
         appendLine("너는 개인 옷장을 다루는 스타일리스트다. 아래 옷장에서 오늘 입을 한 벌을 고른다.")
         appendLine()
         appendLine("[내 옷장]")
+        /*
+         * **옷 한 벌은 한 줄이고, 값이 없는 속성은 아예 빠진다.**
+         *
+         * 이 목록은 추천을 부를 때마다 통째로 프롬프트에 실린다. 옷장이 100벌이면
+         * 한 벌당 한 줄이 곧 100줄이고, 빈 속성을 "소재:없음"처럼 채우면 아무 정보도
+         * 주지 않으면서 토큰과 지연만 늘린다. 게다가 그런 자리 채우기는 모델에게
+         * "여기에 뭔가 있어야 한다"는 신호로 읽혀 없는 정보를 추측하게 만든다.
+         * 속성이 비어 있으면 그 옷은 그냥 짧은 줄로 남는 것이 맞다.
+         */
         req.candidates.groupBy { it.mainCategory }.forEach { (category, items) ->
             appendLine("$category:")
             items.forEach {
                 val parts = listOfNotNull(
                     "id=${it.id}",
                     it.name,
-                    it.color?.let { c -> "색:$c" },
-                    it.detail?.takeIf { d -> d.isNotBlank() },
+                    it.subCategory?.blankToNull()?.let { v -> "종류:$v" },
+                    it.color?.blankToNull()?.let { v -> "색:$v" },
+                    it.material?.blankToNull()?.let { v -> "소재:$v" },
+                    it.fit?.blankToNull()?.let { v -> "핏:$v" },
+                    it.season?.blankToNull()?.let { v -> "계절:$v" },
+                    it.detail?.blankToNull(),
                 )
                 appendLine("  - ${parts.joinToString(" / ")}")
             }
         }
+        appendLine("속성이 빠져 있는 옷은 그 정보를 모르는 것이다. 추측해서 채우지 말고 보이는 것만으로 판단해라.")
         /*
          * 사용자가 쓴 취향 문장.
          *
@@ -248,8 +326,12 @@ class GeminiOutfitRecommender(
         appendLine("[고르는 규칙]")
         appendLine("1. 상의(TOP) 1벌과 하의(BOTTOM) 1벌은 반드시 고른다. 아우터(OUTER)는 어울릴 때만 1벌 더한다.")
         appendLine("2. 색은 전체 3색 이내로 맞춘다. 톤을 통일하거나, 무채색 바탕에 한 곳만 색을 준다.")
-        appendLine("3. 소재와 두께의 계절감을 맞춘다. 두꺼운 니트에 얇은 리넨 하의처럼 계절이 어긋나는 조합은 피한다.")
-        appendLine("4. 핏의 균형을 본다. 상의가 오버핏이면 하의는 정리된 실루엣으로 두는 식이다.")
+        // 3·4번이 위 옷장 목록의 `계절:`·`소재:`·`핏:` 을 직접 가리킨다. 규칙에 값의
+        // 이름을 적어 두지 않으면 모델은 옷 이름만 보고 계절감을 짐작하고, 그러면
+        // 속성을 뽑아 저장한 의미가 없어진다.
+        appendLine("3. 계절감을 맞춘다. 각 옷의 `계절`·`소재` 가 근거다 — `계절:여름` 과 `계절:겨울` 을 한 벌에 섞지 마라.")
+        appendLine("   `계절:사계절` 은 어느 쪽과도 어울린다. 값이 없는 옷은 이름과 색으로 짐작한다.")
+        appendLine("4. 핏의 균형을 본다. 각 옷의 `핏` 이 근거다 — 상의가 오버핏이면 하의는 정리된 실루엣(슬림·스트레이트)으로 둔다.")
         appendLine("5. 옷장에 있는 것만 쓴다. **id 를 새로 만들어내지 마라.** 없는 id 를 넣으면 이 응답은 폐기된다.")
         if (preference != null) {
             appendLine("6. 취향과 위 1~5가 부딪히면 1~5를 따른다. 취향은 그 안에서 고르는 순서를 정할 뿐이다.")

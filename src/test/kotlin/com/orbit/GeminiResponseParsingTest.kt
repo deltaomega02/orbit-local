@@ -12,6 +12,7 @@ import com.orbit.domain.MainCategory
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -87,5 +88,93 @@ class GeminiResponseParsingTest {
         val parsed = analyzer.parseOrFallback("응답이 잘렸습니다 {\"name\":")
 
         assertEquals(GeminiClothingAnalyzer.FALLBACK, parsed)
+        // 폴백에도 속성축 자리는 있다(전부 null). 호출부가 shape 을 분기하지 않는다는 것이 요점이다
+        assertNull(parsed.subCategory)
+        assertNull(parsed.material)
+        assertNull(parsed.fit)
+        assertNull(parsed.season)
+    }
+
+    // ── 속성축(subCategory · material · fit · season) ──────────────────
+
+    @Test
+    fun `속성축이 전부 오면 그대로 읽는다`() {
+        val parsed = analyzer.parseOrFallback(
+            """
+            {"name":"네이비 옥스퍼드 셔츠","mainCategory":"TOP","color":"네이비",
+             "subCategory":"셔츠","material":"면","fit":"레귤러","season":"봄·가을",
+             "detail":"가슴에 작은 자수 로고"}
+            """.trimIndent(),
+        )
+
+        assertEquals("셔츠", parsed.subCategory)
+        assertEquals("면", parsed.material)
+        assertEquals("레귤러", parsed.fit)
+        assertEquals("봄·가을", parsed.season)
+        assertEquals("가슴에 작은 자수 로고", parsed.detail)
+    }
+
+    /**
+     * responseSchema 의 `required` 는 name·mainCategory 뿐이다. 나머지가 빠지는 것은
+     * 정상이며 **폴백으로 넘어갈 일이 아니다** — 빠진 자리만 비우고 나머지는 살린다.
+     * 여기서 폴백으로 새면 모델이 소재 하나를 안 줬다는 이유로 이름·색까지 버려진다.
+     */
+    @Test
+    fun `일부 속성만 와도 나머지만 비우고 폴백으로 새지 않는다`() {
+        val parsed = analyzer.parseOrFallback(
+            """{"name":"청바지","mainCategory":"BOTTOM","material":"데님"}""",
+        )
+
+        assertEquals("청바지", parsed.name)
+        assertEquals(MainCategory.BOTTOM, parsed.mainCategory)
+        assertEquals("데님", parsed.material)
+        assertNull(parsed.subCategory)
+        assertNull(parsed.fit)
+        assertNull(parsed.season)
+        assertNull(parsed.color)
+    }
+
+    @Test
+    fun `공백만 있는 속성은 없는 것으로 본다`() {
+        val parsed = analyzer.parseOrFallback(
+            """{"name":"셔츠","mainCategory":"TOP","material":"   ","fit":""}""",
+        )
+
+        assertNull(parsed.material, "공백만 남는 값을 저장하면 화면에 빈 항목이 생긴다")
+        assertNull(parsed.fit)
+    }
+
+    /**
+     * 스키마의 enum 은 요청이지 보장이 아니다(mainCategory 를 이미 그렇게 다룬다).
+     * 목록 밖의 표기가 섞이면 추천 규칙의 `계절:여름` ↔ `계절:겨울` 비교가 성립하지 않는다.
+     */
+    @Test
+    fun `모르는 season 값은 채우지 않고 비운다`() {
+        val parsed = analyzer.parseOrFallback(
+            """{"name":"셔츠","mainCategory":"TOP","season":"간절기","material":"면"}""",
+        )
+
+        assertNull(parsed.season, "네 값 밖의 표기는 버린다")
+        assertEquals("면", parsed.material, "season 하나 때문에 다른 값까지 버리면 안 된다")
+    }
+
+    @Test
+    fun `허용된 season 네 값은 모두 통과한다`() {
+        listOf("봄·가을", "여름", "겨울", "사계절").forEach { season ->
+            val parsed = analyzer.parseOrFallback(
+                """{"name":"옷","mainCategory":"TOP","season":"$season"}""",
+            )
+            assertEquals(season, parsed.season)
+        }
+    }
+
+    /** 컬럼 길이를 넘는 값이 폼에 들어가면, 사용자가 그대로 저장을 눌렀을 때 400 이 된다. */
+    @Test
+    fun `너무 긴 속성값은 컬럼 길이에서 잘라 내려준다`() {
+        val parsed = analyzer.parseOrFallback(
+            """{"name":"셔츠","mainCategory":"TOP","material":"${"면".repeat(100)}"}""",
+        )
+
+        assertEquals(30, parsed.material?.length)
     }
 }

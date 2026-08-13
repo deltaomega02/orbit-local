@@ -5,6 +5,25 @@ import java.time.Instant
 
 enum class MainCategory { TOP, BOTTOM, OUTER }
 
+/**
+ * 의류 텍스트 필드의 길이 상한. **컬럼 정의·웹 계층의 `@Size`·서비스의 자르기가
+ * 같은 값을 보게 하려고 한 곳에 모은다.**
+ *
+ * 세 곳에 숫자를 따로 적으면 언젠가 어긋나고, 어긋나는 방향도 나쁘다 — `@Size` 가
+ * 컬럼보다 크면 검증을 통과한 값이 INSERT 에서 터지고 사용자에게는 500 으로 보인다.
+ * multipart 등록 경로는 `@Valid` 가 걸리지 않아 길이를 손으로 확인하는데, 그 손
+ * 검증이 참조할 기준값이 필요한 것도 이유다.
+ */
+object ClothesLimits {
+    const val NAME = 60
+    const val COLOR = 30
+    const val SUB_CATEGORY = 30
+    const val MATERIAL = 30
+    const val FIT = 20
+    const val SEASON = 20
+    const val DETAIL = 200
+}
+
 /*
  * [Clothes] · [Coordination] 의 `ownerId` 는 [User] 의 id 다.
  * `@ManyToOne User` 로 연관을 걸지 않고 id 값으로만 참조한다.
@@ -33,22 +52,60 @@ class Clothes(
     @Column(name = "owner_id", nullable = false)
     val ownerId: Long,
 
-    @Column(nullable = false, length = 60)
+    @Column(nullable = false, length = ClothesLimits.NAME)
     var name: String,
 
     @Enumerated(EnumType.STRING)
     @Column(name = "main_category", nullable = false, length = 10)
     var mainCategory: MainCategory,
 
-    @Column(length = 30)
+    @Column(length = ClothesLimits.COLOR)
     var color: String? = null,
 
-    /**
-     * 소재·핏·어울리는 상황. 사진 분석으로 자동으로 채워지고 사용자가 고칠 수 있다.
-     * 추천 프롬프트에 그대로 들어간다 — 이름과 색만으로는 "얇은 리넨"과 "두꺼운 니트"를
-     * 구분할 수 없어서, 계절이나 상황에 맞는 조합이 나오지 않는다.
+    /*
+     * ── 아래 네 개는 추천이 실제로 판단에 쓰는 속성축이다 ──────────────────
+     *
+     * 한동안 사진 분석이 뽑는 것은 이름·카테고리·색·[detail] 한 줄뿐이었다. 그런데
+     * "얇은 리넨 셔츠"와 "두꺼운 기모 니트"는 둘 다 `TOP / 화이트` 다 — 추천이
+     * 계절감을 맞추려 해도 맞출 근거가 없었고, detail 한 줄에 소재·핏·계절이 뭉쳐
+     * 있으면 모델이 그걸 다시 풀어 읽어야 한다. 축을 나눠 두면 프롬프트에서
+     * "계절이 어긋나는 조합은 피한다" 같은 규칙이 가리킬 대상이 생긴다.
+     *
+     * 전부 nullable 이고 **비어 있는 것이 정상이다.** 컬럼이 추가되기 전에 등록된
+     * 옷은 전부 null 이고, 사용자가 채우지 않을 수도 있다. 추천 프롬프트는 값이
+     * 없는 속성을 아예 생략한다(있는 척하면 모델이 지어낸다).
+     *
+     * 자유 문자열로 두고 enum 을 쓰지 않았다. 옷의 소재와 핏은 계속 새 이름이
+     * 생기는 영역이라, 서버가 목록을 고정하면 사용자가 자기 옷을 자기 말로 적을 수
+     * 없게 된다. [season] 만은 AI 응답 단계에서 네 값으로 좁히는데, 그건 **모델이
+     * 답하는 방식**의 제약이지 사용자 입력의 제약이 아니다
+     * ([com.orbit.ai.gemini.GeminiClothingAnalyzer.SEASONS]).
      */
-    @Column(length = 200)
+
+    /** 세부 종류. 셔츠·니트·맨투맨·청바지·슬랙스·코트 … [mainCategory] 를 한 단계 좁힌다. */
+    @Column(name = "sub_category", length = ClothesLimits.SUB_CATEGORY)
+    var subCategory: String? = null,
+
+    /** 소재. 면·울 혼방·데님·리넨·기모 … 계절감 판단의 1차 근거다. */
+    @Column(length = ClothesLimits.MATERIAL)
+    var material: String? = null,
+
+    /** 핏. 오버핏·슬림·와이드·레귤러 … 상하의 실루엣 균형을 맞추는 데 쓴다. */
+    @Column(length = ClothesLimits.FIT)
+    var fit: String? = null,
+
+    /** 어울리는 계절. 봄·가을 / 여름 / 겨울 / 사계절. */
+    @Column(length = ClothesLimits.SEASON)
+    var season: String? = null,
+
+    /**
+     * 위 축으로 나누어지지 않는 한 줄 요약. 사진 분석이 채우고 사용자가 고칠 수 있다.
+     *
+     * 속성축이 생긴 뒤에도 남겨 둔다. "밑단에 자수가 있다"거나 "단추가 나무"처럼
+     * 축에 담기지 않는 관찰이 실제로 추천 이유가 되기 때문이고, 이미 저장된 옷들이
+     * 이 필드에만 정보를 갖고 있기 때문이기도 하다.
+     */
+    @Column(length = ClothesLimits.DETAIL)
     var detail: String? = null,
 
     /**

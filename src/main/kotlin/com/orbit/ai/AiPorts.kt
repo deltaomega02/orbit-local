@@ -27,20 +27,45 @@ interface TryOnImageGenerator {
     fun generate(bodyPhoto: ByteArray, items: List<ByteArray>): ByteArray
 }
 
+/**
+ * 사진 한 장에서 읽어낸 값. 그대로 저장되지 않고 **등록 폼의 초기값**으로만 쓰인다.
+ *
+ * 이름·카테고리를 뺀 나머지는 전부 null 일 수 있다. 모델이 그 항목을 안 줬거나,
+ * 준 값이 우리가 아는 형식이 아니었다는 뜻이다. 폴백도 같은 shape 라서 호출부는
+ * "AI 가 성공했는가"를 분기하지 않는다.
+ */
 data class ClothingAnalysis(
     val name: String,
     val mainCategory: MainCategory,
     val color: String?,
     val detail: String?,
+    /** 셔츠·니트·청바지·코트 … [mainCategory] 를 한 단계 좁힌 종류. */
+    val subCategory: String? = null,
+    /** 면·울 혼방·데님·리넨·기모 … */
+    val material: String? = null,
+    /** 오버핏·슬림·와이드·레귤러 … */
+    val fit: String? = null,
+    /** 봄·가을 / 여름 / 겨울 / 사계절 중 하나. 그 밖의 값은 어댑터가 버린다. */
+    val season: String? = null,
 )
 
-/** 추천 후보. AI 에게는 이 목록에 있는 id 만 쓰라고 요구하고, 서버가 다시 검증한다. */
+/**
+ * 추천 후보. AI 에게는 이 목록에 있는 id 만 쓰라고 요구하고, 서버가 다시 검증한다.
+ *
+ * 속성이 늘어난 만큼 프롬프트도 길어지므로 **값이 없는 속성은 프롬프트에서 생략한다**
+ * ([com.orbit.ai.gemini.GeminiOutfitRecommender.buildPrompt]). 옷 한 벌이 한 줄을
+ * 넘지 않게 하는 것이 목표다 — 옷장이 100벌이면 그 차이가 그대로 호출당 비용이 된다.
+ */
 data class RecommendCandidate(
     val id: Long,
     val name: String,
     val mainCategory: MainCategory,
     val color: String?,
     val detail: String? = null,
+    val subCategory: String? = null,
+    val material: String? = null,
+    val fit: String? = null,
+    val season: String? = null,
 )
 
 data class RecommendRequest(

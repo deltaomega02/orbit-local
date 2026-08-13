@@ -1,6 +1,7 @@
 package com.orbit.service
 
 import com.orbit.domain.Clothes
+import com.orbit.domain.ClothesLimits
 import com.orbit.domain.MainCategory
 import com.orbit.media.MediaStorage
 import com.orbit.repository.ClothesRepository
@@ -17,6 +18,46 @@ import java.time.Clock
  * 자세한 이유는 [ClothesService.findOwned] 주석 참고.
  */
 class ClothesNotFoundException(val id: Long) : RuntimeException("의류를 찾을 수 없습니다: $id")
+
+/**
+ * 옷의 서술 속성 묶음. 이름·카테고리·사진을 뺀 나머지 전부다.
+ *
+ * **왜 묶는가.** 속성이 넷 늘면서 `create` 의 인자가 열 개가 됐다. 인자가 열 개면
+ * 순서를 한 칸 틀려도 컴파일이 통과한다(전부 `String?` 이다) — 소재 자리에 핏이
+ * 들어가도 아무도 모른다. 한 덩어리로 묶으면 호출부가 이름으로 채우게 되고,
+ * "빈 문자열은 지운다 / 길이 상한에서 자른다"는 규칙도 [normalized] 한 곳에 모인다.
+ *
+ * **null 의 뜻은 호출 맥락이 정한다.** 등록에서는 "값이 없다", 수정(PATCH)에서는
+ * "건드리지 않는다"이다. 지우고 싶으면 양쪽 다 빈 문자열을 보낸다 — 이 규칙은
+ * 원래 color·detail 만의 것이었고, 새 속성도 같은 규칙을 따른다.
+ */
+data class ClothesTraits(
+    val color: String? = null,
+    val subCategory: String? = null,
+    val material: String? = null,
+    val fit: String? = null,
+    val season: String? = null,
+    val detail: String? = null,
+) {
+    /**
+     * 앞뒤 공백을 털고, 공백만 남으면 null 로, 넘치면 컬럼 길이에서 자른 값.
+     *
+     * 자르기가 검증과 겹치는 것은 알고 있다(웹 계층의 `@Size` 가 먼저 거른다).
+     * 그래도 여기서 한 번 더 자르는 이유는 multipart 등록 경로에 `@Valid` 가 걸리지
+     * 않기 때문이다. 검증을 우회한 값이 들어와도 DB 제약 위반(=500)이 아니라
+     * 잘린 값으로 끝나야 한다.
+     */
+    fun normalized(): ClothesTraits = ClothesTraits(
+        color = color.clean(ClothesLimits.COLOR),
+        subCategory = subCategory.clean(ClothesLimits.SUB_CATEGORY),
+        material = material.clean(ClothesLimits.MATERIAL),
+        fit = fit.clean(ClothesLimits.FIT),
+        season = season.clean(ClothesLimits.SEASON),
+        detail = detail.clean(ClothesLimits.DETAIL),
+    )
+
+    private fun String?.clean(max: Int): String? = this?.trim()?.ifEmpty { null }?.take(max)
+}
 
 /** 옷장 통계. 화면 하나가 쓰는 값을 한 덩어리로 만든다. */
 data class WardrobeStats(
@@ -49,20 +90,25 @@ class ClothesService(
         ownerId: Long,
         name: String,
         mainCategory: MainCategory,
-        color: String?,
+        traits: ClothesTraits = ClothesTraits(),
         imagePath: String? = null,
-        detail: String? = null,
-    ): Clothes =
-        clothesRepository.save(
+    ): Clothes {
+        val clean = traits.normalized()
+        return clothesRepository.save(
             Clothes(
                 ownerId = ownerId,
-                name = name.trim(),
+                name = name.trim().take(ClothesLimits.NAME),
                 mainCategory = mainCategory,
-                color = color?.trim()?.ifEmpty { null },
+                color = clean.color,
+                subCategory = clean.subCategory,
+                material = clean.material,
+                fit = clean.fit,
+                season = clean.season,
+                detail = clean.detail,
                 imagePath = imagePath,
-                detail = detail?.trim()?.ifEmpty { null }?.take(200),
             ),
         )
+    }
 
     /**
      * 목록. 페이지네이션은 서비스가 아니라 호출자가 준 [Pageable] 로 처리하고,
@@ -88,21 +134,37 @@ class ClothesService(
     @Transactional(readOnly = true)
     fun get(ownerId: Long, id: Long): Clothes = findOwned(ownerId, id)
 
+    /**
+     * PATCH. **보내지 않은(=null) 필드는 건드리지 않고, 빈 문자열은 지운다.**
+     *
+     * 규칙이 속성마다 달라지면 안 되므로 [traits] 의 모든 필드가 같은 규칙을 따른다.
+     * 속성 대부분을 사진 분석이 채우기 때문에 "지우는 길"이 특히 중요하다 — AI 가
+     * 잘못 적어 넣은 값을 지울 수 없으면 사용자는 옷을 지우고 다시 등록하는 수밖에 없다.
+     *
+     * 원본 값(자르기 전)이 아니라 [ClothesTraits.normalized] 를 거친 값을 본다.
+     * 그래야 `"   "` 처럼 공백만 보낸 것이 "지우기"로 읽힌다 — 이 판단은 등록 경로와
+     * 같아야 하고, 같은 함수를 쓰는 것이 같음을 보장하는 가장 싼 방법이다.
+     */
     @Transactional
     fun update(
         ownerId: Long,
         id: Long,
         name: String?,
         mainCategory: MainCategory?,
-        color: String?,
-        detail: String? = null,
+        traits: ClothesTraits = ClothesTraits(),
     ): Clothes {
         val clothes = findOwned(ownerId, id)
-        // PATCH 이므로 null 은 "변경 없음"이다. 색을 지우려면 빈 문자열을 보낸다.
-        name?.let { clothes.name = it.trim() }
+        val clean = traits.normalized()
+        name?.let { clothes.name = it.trim().take(ClothesLimits.NAME) }
         mainCategory?.let { clothes.mainCategory = it }
-        color?.let { clothes.color = it.trim().ifEmpty { null } }
-        detail?.let { clothes.detail = it.trim().ifEmpty { null } }
+        // `traits.X != null` 이 "이 필드를 보냈다", `clean.X` 가 "무엇으로 바꿀 것인가"다.
+        // 빈 문자열은 앞은 참이고 뒤는 null 이라 그대로 "지우기"가 된다.
+        if (traits.color != null) clothes.color = clean.color
+        if (traits.subCategory != null) clothes.subCategory = clean.subCategory
+        if (traits.material != null) clothes.material = clean.material
+        if (traits.fit != null) clothes.fit = clean.fit
+        if (traits.season != null) clothes.season = clean.season
+        if (traits.detail != null) clothes.detail = clean.detail
         return clothes // 더티 체킹으로 반영된다
     }
 
