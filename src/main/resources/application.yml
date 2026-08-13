@@ -39,7 +39,12 @@ orbit:
     refresh-token-validity: 365d
 
   media:
-    dir: ${ORBIT_MEDIA_DIR:./data/media}   # .gitignore 의 data/ 안이라 저장소에 섞이지 않는다
+    # dir 을 여기에 적지 않는다. OrbitEnvironmentPostProcessor 가 OS 별 사용자
+    # 데이터 폴더 아래 경로를 넣어 준다. 여기에 값을 박으면 yml 이 우선순위에서
+    # 이겨서, DB·키는 사용자 폴더에 가는데 **사진만 실행 디렉터리 밑**에 쌓인다.
+    # 설치형 앱에서는 앱을 지우거나 옮기는 순간 사진이 통째로 사라지는 배치다.
+    # (datasource.url 도 같은 이유로 여기에 두지 않는다)
+    # 개발 중 다른 곳에 쌓고 싶으면 ORBIT_MEDIA_DIR 환경변수를 쓴다.
     max-file-size: 8MB
 
   gemini:
