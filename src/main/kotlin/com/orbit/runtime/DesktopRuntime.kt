@@ -14,7 +14,10 @@ import java.nio.file.StandardOpenOption
  * "지금 데스크톱 앱으로 떠 있는가"의 단일 판단 지점.
  *
  * 값은 시스템 프로퍼티 하나(`orbit.desktop`)로만 정한다. jpackage 런처가
- * `-Dorbit.desktop=true` 를 넣고, [com.orbit.main] 도 직접 실행이면 켠다.
+ * `-Dorbit.desktop=true` 를 넣고, [com.orbit.main] 은 **포장된 실행 파일로 떴을 때만**
+ * 켠다([launchedFromPackagedApp]). `./gradlew bootRun` 은 예전과 똑같이 동작한다 —
+ * 개발 중에 트레이 아이콘이 생기고 브라우저가 튀어나오면 그건 도움이 아니라 방해다.
+ *
  * **테스트는 main 을 거치지 않으므로 항상 꺼진 상태다** — 덕분에 트레이 아이콘,
  * 브라우저 자동 실행, 사용자 폴더 로그 같은 부작용이 테스트에 새어 들어올 수 없다.
  */
@@ -26,6 +29,60 @@ object DesktopRuntime {
     /** 명시적으로 꺼둔 경우(`-Dorbit.desktop=false`)는 존중한다. */
     fun enableUnlessOverridden() {
         if (System.getProperty(PROPERTY) == null) System.setProperty(PROPERTY, "true")
+    }
+
+    /**
+     * jpackage 가 만든 런처는 실행 파일의 위치를 `jpackage.app-path` 에 넣어 준다.
+     * 이 값이 있다는 것은 곧 "사용자가 exe 를 더블클릭했다"는 뜻이다.
+     */
+    fun launchedFromPackagedApp(): Boolean = !System.getProperty("jpackage.app-path").isNullOrBlank()
+
+    /**
+     * 먼저 시도해 볼 포트. 기본 8080 이고, 막혀 있으면 [FreePort] 가 옆으로 옮긴다.
+     *
+     * 굳이 바꿀 수 있게 열어 둔 이유는 검증 때문이다. 이미 8080 에서 개발 서버가
+     * 돌고 있는 기계에서 설치본을 한 번 띄워보려면 "8080 부터 훑는다"는 기본 동작이
+     * 오히려 방해가 된다.
+     */
+    fun preferredPort(): Int =
+        setting("orbit.port", "ORBIT_PORT")?.toIntOrNull()?.takeIf { it in 1..65535 } ?: 8080
+
+    /**
+     * 기동 후 브라우저를 자동으로 열 것인가. 기본은 연다 — 이게 앱의 첫 화면이다.
+     * 끄는 길을 남겨 둔 것은 사람이 없는 자리에서 기동만 확인하고 싶을 때를 위해서다.
+     */
+    val opensBrowser: Boolean
+        get() = !"false".equals(setting("orbit.open-browser", "ORBIT_OPEN_BROWSER"), ignoreCase = true)
+
+    private fun setting(property: String, env: String): String? =
+        (System.getProperty(property) ?: System.getenv(env))?.trim()?.takeIf { it.isNotEmpty() }
+}
+
+/**
+ * 두 번째 실행이 물러나는 방식.
+ *
+ * 사용자는 "앱이 안 떠서" 아이콘을 또 누른 것이다. 그 상황에서 아무 반응 없이 죽으면
+ * 같은 행동을 반복하게 된다. 이미 떠 있는 인스턴스의 화면을 열어 주는 것이 사용자가
+ * 원래 원했던 결과이고, 그마저 실패하면 최소한 "이미 켜져 있다"고 말은 해 준다.
+ */
+object SecondInstance {
+    fun handOverToRunningInstance() {
+        // 브라우저를 열지 않기로 한 실행이라면 안내 창도 띄우지 않는다. 사람이
+        // 보고 있지 않은 자리에서 대화 상자가 뜨면 그 프로세스는 영영 안 끝난다.
+        if (!DesktopRuntime.opensBrowser) return
+
+        val port = SingleInstance.publishedPort()
+        if (port != null && BrowserOpener.open("http://127.0.0.1:$port")) return
+
+        runCatching {
+            javax.swing.JOptionPane.showMessageDialog(
+                null,
+                "Orbit はすでに起動しています。\n" +
+                    "画面右下の通知領域（時計のとなり）にある Orbit のアイコンをクリックしてください。",
+                "Orbit",
+                javax.swing.JOptionPane.INFORMATION_MESSAGE,
+            )
+        }
     }
 }
 

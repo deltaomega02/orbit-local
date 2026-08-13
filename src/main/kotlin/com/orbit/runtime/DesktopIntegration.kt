@@ -72,6 +72,10 @@ class DesktopIntegration(
         }
         installMacQuitHandler()
 
+        if (!DesktopRuntime.opensBrowser) {
+            log.info("브라우저 자동 실행이 꺼져 있다. 직접 {} 로 접속한다", url)
+            return
+        }
         if (!BrowserOpener.open(url)) {
             log.warn("브라우저를 자동으로 열지 못했다. 직접 {} 로 접속해야 한다", url)
         }
@@ -115,16 +119,30 @@ class DesktopIntegration(
         if (!SystemTray.isSupported()) return false
         val tray = SystemTray.getSystemTray()
 
+        // 이 메뉴를 읽는 사람은 일본어 사용자다. 개발자에게만 보이는 로그와 달리
+        // 여기 문구는 **받는 사람이 앱을 끄는 유일한 길**이라 그 사람의 말이어야 한다.
         val menu = PopupMenu()
-        menu.add(MenuItem("Orbit 열기").apply { addActionListener { BrowserOpener.open(url) } })
+        menu.add(MenuItem("Orbit を開く").apply { addActionListener { BrowserOpener.open(url) } })
         menu.addSeparator()
-        menu.add(MenuItem("종료").apply { addActionListener { quit() } })
+        menu.add(MenuItem("終了 (Orbit を閉じる)").apply { addActionListener { quit() } })
 
         val icon = TrayIcon(appIcon(tray.trayIconSize.width.coerceAtLeast(16)), "Orbit — $url", menu)
         icon.isImageAutoSize = true
         icon.addActionListener { BrowserOpener.open(url) }
         tray.add(icon)
         trayIcon = icon
+
+        // 브라우저 탭을 닫는 것과 앱을 끄는 것이 다르다는 사실은 알려 주지 않으면
+        // 알 수 없다. 첫 화면이 뜨는 순간 종료 수단의 위치를 한 번 짚어 준다 —
+        // 이 안내가 없으면 사용자는 앱을 껐다고 믿고 프로세스는 계속 남는다.
+        runCatching {
+            icon.displayMessage(
+                "Orbit を起動しました",
+                "終了するときは、この Orbit アイコンを右クリックして「終了」を選んでください。\n" +
+                    "ブラウザーのタブを閉じただけでは終了しません。",
+                TrayIcon.MessageType.INFO,
+            )
+        }
         true
     }.getOrElse {
         log.warn("트레이 아이콘을 만들지 못했다: {}", it.message)
@@ -142,15 +160,22 @@ class DesktopIntegration(
                 })
                 frame.iconImage = appIcon(64)
                 frame.layout = BorderLayout(12, 12)
-                frame.add(JLabel("Orbit 이 실행 중입니다  ($url)", SwingConstants.CENTER), BorderLayout.CENTER)
+                frame.add(
+                    JLabel(
+                        "<html><div style='text-align:center'>Orbit を実行中です（$url）<br>" +
+                            "この小さなウィンドウを閉じると Orbit も終了します。</div></html>",
+                        SwingConstants.CENTER,
+                    ),
+                    BorderLayout.CENTER,
+                )
                 frame.add(
                     JPanel().apply {
-                        add(JButton("브라우저 열기").apply { addActionListener { BrowserOpener.open(url) } })
-                        add(JButton("종료").apply { addActionListener { quit() } })
+                        add(JButton("ブラウザーで開く").apply { addActionListener { BrowserOpener.open(url) } })
+                        add(JButton("終了").apply { addActionListener { quit() } })
                     },
                     BorderLayout.SOUTH,
                 )
-                frame.setSize(420, 150)
+                frame.setSize(460, 170)
                 frame.setLocationRelativeTo(null)
                 frame.isVisible = true
                 fallbackWindow = frame
