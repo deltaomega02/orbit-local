@@ -30,6 +30,24 @@
   function show(el, on) { if (el) el.hidden = !on; }
   function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
 
+  /**
+   * 방금 펼친 것을 눈에 보이는 자리로 데려온다.
+   *
+   * 삭제 확인 패널은 늘 화면 맨 아래에 열렸고, 버튼이 고정된 탭바에 절반쯤
+   * 가려졌다. 스크롤도 저절로 따라가지 않아 "눌렀는데 아무 일도 안 일어났다"로
+   * 읽혔다. 탭바에 가리지 않을 여백은 CSS 의 scroll-margin-bottom 이 맡는다.
+   */
+  function scrollIntoViewSafely(el) {
+    if (!el || el.hidden) return;
+    requestAnimationFrame(function () {
+      try {
+        el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      } catch (e) {
+        el.scrollIntoView(false);
+      }
+    });
+  }
+
   /** 스프라이트 아이콘. 굵기·크기는 CSS(--ico-size, --ico-stroke)가 정한다. */
   function icon(name, cls) {
     return '<svg class="ico' + (cls ? ' ' + cls : '') + '" aria-hidden="true">' +
@@ -289,16 +307,28 @@
    * ================================================================ */
   var state = {
     user: null,
-    ai: { configured: false, masked: null, checked: false },
+    /**
+     * configured 는 **서버가 말한 사실**이다. 화면이 덮어쓰면 안 된다.
+     * 예전에는 `키 바꾸기` 가 configured 를 false 로 만들어, 서버는 여전히
+     * 연결되어 있는데 앱 전체가 "AI 안 됨" 으로 바뀌고 빠져나올 수 없었다.
+     * "지금 키를 다시 입력하는 중" 은 화면의 사정이므로 editing 으로 따로 둔다.
+     */
+    ai: { configured: false, masked: null, checked: false, editing: false },
 
     closet: { items: [], page: 0, totalPages: 0, totalElements: 0, filter: 'ALL', loaded: false },
-    home: { today: [], recent: [], loaded: false },
+    home: { today: [], recent: [], loaded: false, lookCount: 0 },
     history: { items: [], page: 0, totalPages: 0, totalElements: 0, filter: 'ALL', loaded: false },
-    coord: { id: null, data: null },
+    coord: { id: null, data: null, media: 'tryon' },
     item: { id: null, data: null, usedIn: [], usedInUnavailable: false },
+    stats: { data: null, loaded: false },
+
+    /** '입어보기' → 전신 사진 등록으로 보낼 때, 돌아올 자리를 적어 둔다. */
+    pendingTryOn: null,
 
     addImage: null,
-    analyzeAbort: null
+    analyzeAbort: null,
+    /** 옷 정보 수정 중이면 그 옷의 id. null 이면 새 옷 등록이다. */
+    editItemId: null
   };
 
   /* ================================================================
@@ -502,12 +532,15 @@
 
   function resetState() {
     state.user = null;
-    state.ai = { configured: false, masked: null, checked: false };
+    state.ai = { configured: false, masked: null, checked: false, editing: false };
     state.closet = { items: [], page: 0, totalPages: 0, totalElements: 0, filter: 'ALL', loaded: false };
-    state.home = { today: [], recent: [], loaded: false };
+    state.home = { today: [], recent: [], loaded: false, lookCount: 0 };
     state.history = { items: [], page: 0, totalPages: 0, totalElements: 0, filter: 'ALL', loaded: false };
-    state.coord = { id: null, data: null };
+    state.coord = { id: null, data: null, media: 'tryon' };
     state.item = { id: null, data: null, usedIn: [], usedInUnavailable: false };
+    state.stats = { data: null, loaded: false };
+    state.pendingTryOn = null;
+    state.editItemId = null;
     moreLoaded = false;
     stack = [{ name: 'home', params: {}, scroll: 0 }];
     releaseLocalPreviews();
@@ -605,6 +638,8 @@
       state.ai.configured = !!(res && res.configured);
       state.ai.masked = res && res.masked;
       state.ai.checked = true;
+      // 서버가 새로 답했으면 화면의 편집 모드는 뜻을 잃는다.
+      state.ai.editing = false;
       renderAiState();
     }).catch(function (err) {
       if (isExpired(err)) return;
@@ -615,16 +650,35 @@
 
   function renderAiState() {
     var connected = state.ai.configured;
-    show($('#key-connected'), connected);
-    show($('#key-setup'), !connected);
+    // 연결돼 있어도 "키를 다시 입력하는 중" 이면 입력 폼을 보여 준다.
+    // 이때도 configured 는 여전히 true 다 — 서버의 사실은 바뀌지 않았다.
+    var editing = connected && state.ai.editing;
+
+    show($('#key-connected'), connected && !editing);
+    show($('#key-setup'), !connected || editing);
     if (connected) $('#key-masked').textContent = state.ai.masked || '';
 
+    // 취소는 되돌아갈 자리가 있을 때만 뜻이 있다 (= 이미 연결돼 있을 때).
+    show($('#btn-key-cancel'), editing);
+    var submitText = $('.btn__text', $('#form-key button[type=submit]'));
+    if (submitText) submitText.textContent = editing ? '새 키로 바꾸기' : '연결하기';
+
+    // 해제 확인은 패널을 다시 그릴 때마다 접어 둔다.
+    showKeyRemoveConfirm(false);
+
+    // 홈의 문구는 **서버가 말한 사실**만 따른다. 화면의 편집 모드가 섞이면
+    // 키를 바꾸려 눌렀을 뿐인데 앱 전체가 "AI 안 됨" 으로 바뀐다.
     var sub = $('#recommend-sub');
     if (sub) {
-      sub.textContent = (state.ai.checked && !connected)
+      sub.textContent = (state.ai.checked && !state.ai.configured)
         ? 'AI 연결을 마치면 바로 쓸 수 있어요'
         : '옷장을 보고 오늘의 조합을 골라 드려요';
     }
+  }
+
+  function showKeyRemoveConfirm(on) {
+    show($('#key-remove-confirm'), on);
+    show($('#btn-key-ask-remove'), !on);
   }
 
   var guideSheet = $('#guide-sheet');
@@ -1119,6 +1173,8 @@
       show(ask, false);
       var cancel = $('[data-action="cancel-delete"]', block);
       if (cancel) cancel.focus();
+      // 확인 패널은 화면 맨 아래에 열린다. 스크롤을 따라가지 않으면 탭바에 가린다.
+      scrollIntoViewSafely(confirmBox);
     } else if (btn.dataset.action === 'cancel-delete') {
       show(confirmBox, false);
       show(ask, true);
@@ -2036,14 +2092,16 @@
       return;
     }
 
+    var wasEditing = state.ai.editing;
     var done = busy(e.target.querySelector('button[type=submit]'), '연결 중…');
     api.settings.saveGeminiKey(key).then(function (res) {
       state.ai.configured = !!(res && res.configured);
       state.ai.masked = res && res.masked;
       state.ai.checked = true;
+      state.ai.editing = false;
       $('#key-input').value = '';
       renderAiState();
-      toast('AI 연결이 끝났어요. 이제 추천을 받을 수 있어요.');
+      toast(wasEditing ? '새 키로 바꿨어요.' : 'AI 연결이 끝났어요. 이제 추천을 받을 수 있어요.');
     }).catch(function (err) {
       if (isExpired(err)) return;
       setNote($('#key-error'), err.isApiError && err.code === 'invalid_key'
@@ -2052,10 +2110,36 @@
     }).finally(done);
   });
 
+  /**
+   * 키 바꾸기는 **화면의 모드 전환**이지 연결 해제가 아니다.
+   * 예전에는 여기서 state.ai.configured 를 false 로 만들어, 서버는 계속
+   * configured:true 인데도 홈 문구가 "AI 연결을 마치면" 으로 바뀌고
+   * 추천을 누르면 "연결이 아직 안 되어 있어요" 시트가 떴다.
+   */
   $('#btn-key-change').addEventListener('click', function () {
-    state.ai.configured = false;
+    state.ai.editing = true;
     renderAiState();
+    setNote($('#key-error'), '');
     setTimeout(function () { $('#key-input').focus(); }, 60);
+  });
+
+  /** 취소 — 붙여넣을 키가 없을 때 원래 상태로 돌아가는 유일한 길. */
+  $('#btn-key-cancel').addEventListener('click', function () {
+    state.ai.editing = false;
+    $('#key-input').value = '';
+    setNote($('#key-error'), '');
+    renderAiState();
+    setTimeout(function () { $('#btn-key-change').focus(); }, 60);
+  });
+
+  $('#btn-key-ask-remove').addEventListener('click', function () {
+    showKeyRemoveConfirm(true);
+    $('#btn-key-remove-cancel').focus();
+    scrollIntoViewSafely($('#key-remove-confirm'));
+  });
+  $('#btn-key-remove-cancel').addEventListener('click', function () {
+    showKeyRemoveConfirm(false);
+    $('#btn-key-ask-remove').focus();
   });
 
   $('#btn-key-remove').addEventListener('click', function () {
@@ -2063,6 +2147,7 @@
     api.settings.removeGeminiKey().then(function () {
       state.ai.configured = false;
       state.ai.masked = null;
+      state.ai.editing = false;
       renderAiState();
       toast('연결을 해제했어요.');
     }).catch(function (err) {

@@ -258,6 +258,9 @@ code { font-family: var(--font-num); }
 .linkbtn:hover { color: var(--ink); }
 
 .btnrow { display: flex; flex-wrap: wrap; gap: var(--s2); }
+/* 취소 + 주 버튼. 취소는 제 글자만큼만 차지하고 나머지를 주 버튼이 가져간다. */
+.btnrow--form { flex-wrap: nowrap; align-items: stretch; }
+.btnrow--form .btn--block { width: auto; flex: 1 1 auto; }
 
 /* ------------------------------------------------------------
    폼
@@ -778,6 +781,10 @@ input:focus-visible, textarea:focus-visible { outline: 2px solid var(--ink); out
   background: var(--danger-soft);
   border-radius: var(--r-card);
   padding: var(--s4);
+  /* 확인 패널은 늘 화면 맨 아래에 열리고, 고정된 탭바가 그 버튼을 반쯤 덮었다.
+     스크롤로 데려올 때(scrollIntoView) 탭바만큼은 비켜서 서라고 알려 준다. */
+  scroll-margin-bottom: calc(var(--tabbar-h) + var(--s5) + env(safe-area-inset-bottom, 0px));
+  scroll-margin-top: var(--s8);
 }
 .confirm__q { font-size: 15px; font-weight: 700; color: var(--danger); }
 .confirm__actions { display: flex; gap: var(--s2); }

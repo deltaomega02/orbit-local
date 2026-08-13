@@ -375,12 +375,23 @@
             <span class="keyline__badge"><svg class="ico ico--sm" aria-hidden="true"><use href="#i-check" /></svg> 연결됨</span>
             <code class="num" id="key-masked"></code>
           </p>
+          <!-- 키는 계정이 아니라 이 Orbit 에 붙어 있다. 사실대로 적는다. -->
+          <p class="field__hint">이 키는 이 Orbit 전체에 저장돼요. 여기서 만든 다른 계정도 같은 키를 함께 씁니다.</p>
           <div class="btnrow">
             <button class="btn btn--ghost" id="btn-key-change" type="button">키 바꾸기</button>
-            <button class="btn btn--quiet" id="btn-key-remove" type="button">
-              <span class="btn__spinner" aria-hidden="true"></span>
-              <span class="btn__text">연결 해제</span>
-            </button>
+            <button class="btn btn--quiet" id="btn-key-ask-remove" type="button">연결 해제</button>
+          </div>
+
+          <!-- 해제는 이 Orbit 의 모든 계정에서 AI 가 멈춘다는 뜻이다. 한 번 묻는다. -->
+          <div class="confirm" id="key-remove-confirm" role="alertdialog" aria-label="연결 해제 확인" hidden>
+            <p class="confirm__q">연결을 해제하면 이 Orbit 의 모든 계정에서 추천·사진 인식·입어보기가 멈춰요.</p>
+            <div class="confirm__actions">
+              <button class="btn btn--ghost btn--tiny" id="btn-key-remove-cancel" type="button">취소</button>
+              <button class="btn btn--danger btn--tiny" id="btn-key-remove" type="button">
+                <span class="btn__spinner" aria-hidden="true"></span>
+                <span class="btn__text">연결 해제</span>
+              </button>
+            </div>
           </div>
         </div>
 
@@ -411,13 +422,20 @@
                   <svg class="ico ico--sm" aria-hidden="true"><use href="#i-eye" /></svg>
                 </button>
               </div>
-              <p class="field__hint">붙여넣은 키는 이 기기의 Orbit에만 저장돼요.</p>
+              <!-- 키는 계정별이 아니라 앱 전역이다. 예전 문구("이 기기의 Orbit에만
+                   저장돼요")는 계정마다 따로 저장되는 것처럼 읽혔다. -->
+              <p class="field__hint">붙여넣은 키는 이 Orbit 에 저장돼요. 여기서 만든 다른 계정도 같은 키를 함께 씁니다.</p>
             </div>
             <div class="note note--error" id="key-error" role="alert" hidden></div>
-            <button type="submit" class="btn btn--primary btn--block">
-              <span class="btn__spinner" aria-hidden="true"></span>
-              <span class="btn__text">연결하기</span>
-            </button>
+            <div class="btnrow btnrow--form">
+              <!-- 붙여넣을 키가 없을 때 빠져나갈 곳. 이 버튼이 없어서 "키 바꾸기"가
+                   새로고침 말고는 탈출구 없는 막다른 화면이었다. -->
+              <button type="button" class="btn btn--ghost" id="btn-key-cancel" hidden>취소</button>
+              <button type="submit" class="btn btn--primary btn--block">
+                <span class="btn__spinner" aria-hidden="true"></span>
+                <span class="btn__text">연결하기</span>
+              </button>
+            </div>
           </form>
         </div>
       </section>
