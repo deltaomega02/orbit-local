@@ -117,7 +117,12 @@
                 aria-selected="false" aria-controls="form-signup" data-auth-tab="signup">회원가입</button>
       </div>
 
-      <div class="note note--error" id="auth-error" role="alert" hidden></div>
+      <!-- 로그인에 실패한 사람의 절반은 "아직 계정이 없는 사람"이다.
+           오류 문구 안에 가입으로 가는 출구를 같이 둔다. -->
+      <div class="note note--error" id="auth-error" role="alert" hidden>
+        <span class="note__body" id="auth-error-msg"></span>
+        <button class="btn btn--tiny btn--ghost" id="btn-auth-error-action" type="button" hidden></button>
+      </div>
       <div class="note" id="auth-notice" role="status" hidden></div>
 
       <form class="form" id="form-login" role="tabpanel" aria-labelledby="tab-login" novalidate>
@@ -128,8 +133,14 @@
         </div>
         <div class="field">
           <label for="login-password">비밀번호</label>
-          <input type="password" id="login-password" autocomplete="current-password"
-                 required placeholder="비밀번호" />
+          <div class="inputrow inputrow--plain">
+            <input type="password" id="login-password" autocomplete="current-password"
+                   required placeholder="비밀번호" />
+            <button class="iconbtn inputrow__btn" type="button" data-reveal="login-password"
+                    aria-label="비밀번호 보기" aria-pressed="false">
+              <svg class="ico ico--sm" aria-hidden="true"><use href="#i-eye" /></svg>
+            </button>
+          </div>
         </div>
         <button type="submit" class="btn btn--primary btn--block">
           <span class="btn__spinner" aria-hidden="true"></span>
@@ -145,9 +156,21 @@
         </div>
         <div class="field">
           <label for="signup-password">비밀번호</label>
-          <input type="password" id="signup-password" autocomplete="new-password"
-                 required minlength="8" placeholder="8자 이상" />
-          <p class="field__hint">8자 이상으로 정해 주세요.</p>
+          <!-- 가리기만 하면 오타를 다음 로그인에서야 안다. 눈으로 확인할 길을 준다. -->
+          <div class="inputrow inputrow--plain">
+            <input type="password" id="signup-password" autocomplete="new-password"
+                   required minlength="8" placeholder="8자 이상" />
+            <button class="iconbtn inputrow__btn" type="button" data-reveal="signup-password"
+                    aria-label="비밀번호 보기" aria-pressed="false">
+              <svg class="ico ico--sm" aria-hidden="true"><use href="#i-eye" /></svg>
+            </button>
+          </div>
+          <p class="field__hint">8자 이상으로 정해 주세요. 눈 아이콘으로 입력한 글자를 확인할 수 있어요.</p>
+        </div>
+        <div class="field">
+          <label for="signup-password2">비밀번호 확인</label>
+          <input type="password" id="signup-password2" autocomplete="new-password"
+                 required placeholder="한 번 더 입력" />
         </div>
         <button type="submit" class="btn btn--primary btn--block">
           <span class="btn__spinner" aria-hidden="true"></span>
@@ -197,15 +220,14 @@
 
       <div id="home-body" hidden>
 
-        <!-- 오늘 -->
-        <section class="block">
-          <!-- LOOK 카드가 자기 번호를 이미 달고 나오므로, 카드가 있을 때는 이 라벨을 접는다.
-               인덱스 라벨이 두 줄로 겹치면 서명이 아니라 실수처럼 보인다. -->
-          <p class="indexlabel" id="home-today-label">Today</p>
-          <div id="home-today"></div>
+        <!-- 옷장 색인 — 더보기 3단계 깊이에 묻혀 있던 통계를 첫 화면으로 올린다.
+             기록이 쌓이는 게 보이는 것이 이 앱의 유일한 재방문 이유다. -->
+        <section class="block block--tight" id="home-index-section" hidden>
+          <div class="statstrip" id="home-index"></div>
         </section>
 
-        <!-- 주 행동 -->
+        <!-- 주 행동 — 세로로 꽉 찬 사진 아래에 있으면 첫 화면에서 보이지 않는다.
+             오늘의 기록보다 위에 둬서 열자마자 손이 닿게 한다. -->
         <section class="block">
           <button class="action" id="btn-recommend" type="button">
             <span class="action__icon accent"><svg class="ico" aria-hidden="true"><use href="#i-sparkle" /></svg></span>
@@ -232,6 +254,14 @@
             <span class="note__body" id="home-error-msg"></span>
             <button class="btn btn--ghost btn--tiny" id="home-error-action" type="button" hidden></button>
           </div>
+        </section>
+
+        <!-- 오늘 -->
+        <section class="block">
+          <!-- LOOK 카드가 자기 번호를 이미 달고 나오므로, 카드가 있을 때는 이 라벨을 접는다.
+               인덱스 라벨이 두 줄로 겹치면 서명이 아니라 실수처럼 보인다. -->
+          <p class="indexlabel" id="home-today-label">Today</p>
+          <div id="home-today"></div>
         </section>
 
         <!-- 최근 -->

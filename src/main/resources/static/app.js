@@ -138,20 +138,36 @@
   function isExpired(err) { return err && err.isApiError && err.code === 'session_expired'; }
 
   /* ---------------- 카테고리 ---------------- */
+  /**
+   * initial 은 사진 없는 옷의 바닥판에 찍히는 글자다.
+   *
+   * DESIGN.md 는 `TOP / BTM / OUT` 을 적어 뒀지만, `BTM` 과 `OUT` 은 단어가 아니라
+   * 개발용 축약이다. 화면에 나가는 글자가 사전에 없는 말이면 그건 디자인이 아니라
+   * 미완성으로 읽힌다. 인덱스 라벨의 "넓은 자간 · 작은 대문자 영문" 이라는 성질은
+   * 그대로 지키면서 실제 단어로 바꾼다.
+   */
   var CATEGORY = {
     TOP:    { label: '상의',   en: 'Top',    initial: 'TOP' },
-    BOTTOM: { label: '하의',   en: 'Bottom', initial: 'BTM' },
-    OUTER:  { label: '아우터', en: 'Outer',  initial: 'OUT' }
+    BOTTOM: { label: '하의',   en: 'Bottom', initial: 'BOTTOM' },
+    OUTER:  { label: '아우터', en: 'Outer',  initial: 'OUTER' }
   };
   function catOf(key) { return CATEGORY[key] || { label: '기타', en: 'Item', initial: 'ITEM' }; }
 
   var MAX_UPLOAD = 10 * 1024 * 1024;
 
   /* ---------------- 번호 · 날짜 ---------------- */
-  /** 기록물의 일련번호. 서버 id 를 그대로 쓰므로 페이지를 넘겨도 흔들리지 않는다. */
-  function lookNo(c) {
-    var n = String(c && c.id != null ? c.id : '');
-    return 'Look ' + (n.length < 3 ? ('000' + n).slice(-3) : n);
+  /**
+   * 기록물의 일련번호.
+   *
+   * 예전에는 서버 `id` 를 세 자리로 채워 만들었다. id 는 모든 사용자가 공유하는
+   * 전역 시퀀스라, 새 계정의 첫 기록이 `LOOK 005` 로 나왔다. 사용자에게 보여줄
+   * 뜻을 가진 값이 아니다. 표시용 번호는 서버가 계정별로 1부터 매겨 저장해 두고
+   * `lookNo` 로 내려준다. `id` 는 링크와 API 호출에만 쓴다.
+   */
+  function lookLabel(c) {
+    var n = c && c.lookNo;
+    if (typeof n !== 'number' || !isFinite(n)) return 'Look';   // 서버가 못 준 경우
+    return 'Look ' + (n < 100 ? ('00' + n).slice(-3) : String(n));
   }
   function dateOf(iso) {
     var d = new Date(iso);
@@ -542,7 +558,7 @@
     show($('#screen-auth'), true);
     show($('#boot'), false);
     setNote($('#auth-notice'), notice || '');
-    setNote($('#auth-error'), '');
+    authError('');
     resetState();
   }
 
@@ -580,18 +596,58 @@
   /* ================================================================
    * 로그인 / 가입
    * ================================================================ */
+
+  /**
+   * 오류 문구와 그 옆의 출구 버튼을 함께 다룬다.
+   * 로그인에 실패하는 사람의 상당수는 "비밀번호를 틀린 사람"이 아니라
+   * "아직 계정이 없는 사람"이다. 문구만 주고 끝내면 그 사람은 막힌다.
+   */
+  function authError(msg, action) {
+    var box = $('#auth-error');
+    var btn = $('#btn-auth-error-action');
+    setNote(box, msg, $('#auth-error-msg'));
+    if (msg && action) {
+      btn.textContent = action.label;
+      btn.hidden = false;
+      btn.onclick = action.run;
+    } else {
+      btn.hidden = true;
+      btn.onclick = null;
+    }
+  }
+
+  /** 탭을 바꾼다. 이미 친 이메일은 그대로 옮겨 준다. */
+  function setAuthTab(mode) {
+    $$('[data-auth-tab]').forEach(function (t) {
+      var on = t.dataset.authTab === mode;
+      t.classList.toggle('is-active', on);
+      t.setAttribute('aria-selected', on ? 'true' : 'false');
+    });
+    // 탭을 바꿨다고 방금 친 이메일까지 사라지면 두 번 치게 된다.
+    var from = mode === 'signup' ? $('#login-email') : $('#signup-email');
+    var to   = mode === 'signup' ? $('#signup-email') : $('#login-email');
+    if (from.value.trim() && !to.value.trim()) to.value = from.value.trim();
+
+    show($('#form-login'), mode === 'login');
+    show($('#form-signup'), mode === 'signup');
+    authError('');
+    setNote($('#auth-notice'), '');
+  }
+
   $$('[data-auth-tab]').forEach(function (tab) {
-    tab.addEventListener('click', function () {
-      var mode = tab.dataset.authTab;
-      $$('[data-auth-tab]').forEach(function (t) {
-        var on = t === tab;
-        t.classList.toggle('is-active', on);
-        t.setAttribute('aria-selected', on ? 'true' : 'false');
-      });
-      show($('#form-login'), mode === 'login');
-      show($('#form-signup'), mode === 'signup');
-      setNote($('#auth-error'), '');
-      setNote($('#auth-notice'), '');
+    tab.addEventListener('click', function () { setAuthTab(tab.dataset.authTab); });
+  });
+
+  /** 비밀번호 보기/가리기. 키 입력칸과 같은 방식을 로그인·가입에도 쓴다. */
+  $$('[data-reveal]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var input = document.getElementById(btn.dataset.reveal);
+      if (!input) return;
+      var shown = input.type === 'text';
+      input.type = shown ? 'password' : 'text';
+      btn.setAttribute('aria-pressed', shown ? 'false' : 'true');
+      btn.setAttribute('aria-label', shown ? '비밀번호 보기' : '비밀번호 가리기');
+      btn.innerHTML = icon(shown ? 'eye' : 'eye-off', 'ico--sm');
     });
   });
 
@@ -599,16 +655,25 @@
     e.preventDefault();
     var email = $('#login-email').value.trim();
     var password = $('#login-password').value;
-    setNote($('#auth-error'), '');
+    authError('');
 
     if (!email || !password) {
-      setNote($('#auth-error'), '이메일과 비밀번호를 모두 입력해 주세요.');
+      authError('이메일과 비밀번호를 모두 입력해 주세요.');
       return;
     }
     var done = busy(e.target.querySelector('button[type=submit]'), '로그인 중…');
     api.auth.login(email, password)
       .then(bootAfterLogin)
-      .catch(function (err) { setNote($('#auth-error'), humanError(err) || '로그인에 실패했어요.'); })
+      .catch(function (err) {
+        var noAccount = err && err.isApiError && err.code === 'invalid_credentials';
+        authError(humanError(err) || '로그인에 실패했어요.', noAccount ? {
+          label: '계정이 없나요? 가입하기',
+          run: function () {
+            setAuthTab('signup');
+            $('#signup-password').focus();
+          }
+        } : null);
+      })
       .finally(done);
   });
 
@@ -616,14 +681,22 @@
     e.preventDefault();
     var email = $('#signup-email').value.trim();
     var password = $('#signup-password').value;
-    setNote($('#auth-error'), '');
+    var confirm = $('#signup-password2').value;
+    authError('');
 
     if (!email || !password) {
-      setNote($('#auth-error'), '이메일과 비밀번호를 모두 입력해 주세요.');
+      authError('이메일과 비밀번호를 모두 입력해 주세요.');
       return;
     }
     if (password.length < 8) {
-      setNote($('#auth-error'), '비밀번호는 8자 이상으로 정해 주세요.');
+      authError('비밀번호는 8자 이상으로 정해 주세요.');
+      $('#signup-password').focus();
+      return;
+    }
+    // 오타를 다음 로그인에서 알게 되는 것이 이 화면의 유일한 함정이었다.
+    if (password !== confirm) {
+      authError('두 비밀번호가 서로 달라요. 다시 확인해 주세요.');
+      $('#signup-password2').focus();
       return;
     }
     var done = busy(e.target.querySelector('button[type=submit]'), '가입 중…');
@@ -631,7 +704,13 @@
       // 가입 직후 바로 로그인시킨다. 방금 친 비밀번호를 또 치게 하지 않는다.
       .then(function () { return api.auth.login(email, password); })
       .then(bootAfterLogin)
-      .catch(function (err) { setNote($('#auth-error'), humanError(err) || '가입에 실패했어요.'); })
+      .catch(function (err) {
+        var dup = err && err.isApiError && err.code === 'duplicate_email';
+        authError(humanError(err) || '가입에 실패했어요.', dup ? {
+          label: '로그인하러 가기',
+          run: function () { setAuthTab('login'); $('#login-password').focus(); }
+        } : null);
+      })
       .finally(done);
   });
 
@@ -762,14 +841,22 @@
         return { content: [] };
       }),
       // 옷장이 비었는지 알아야 홈에서 무엇을 권할지 정할 수 있다
-      api.clothes.list({ page: 0, size: 1 }).catch(function () { return null; })
+      api.clothes.list({ page: 0, size: 1 }).catch(function () { return null; }),
+      // 홈 색인용. 없으면 색인 줄만 접힌다.
+      loadStats().catch(function () { return null; })
     ]).then(function (res) {
       var today = (res[0] || []).slice().sort(function (a, b) {
         return new Date(b.createdAt) - new Date(a.createdAt);
       });
       state.home.today = today;
 
-      var recent = (res[1] && res[1].content) || [];
+      var page = res[1] || {};
+      var recent = page.content || [];
+      // 지금까지 남긴 LOOK 이 몇 장인지. 기록 API 가 없으면 오늘 것만 셀 수밖에 없다.
+      state.home.lookCount = (page.totalElements != null && !page.__unavailable)
+        ? page.totalElements
+        : (recent.length || today.length);
+
       if (!recent.length) recent = today;   // 기록 API 가 아직 없으면 오늘 것으로 채운다
       state.home.recent = recent.filter(function (c) {
         return !today.length || String(c.id) !== String(today[0].id);
@@ -815,8 +902,47 @@
       $('#home-recent').innerHTML = recent.map(lookHtml).join('');
       hydrateImages($('#home-recent'));
     }
+    renderHomeIndex();
     renderAiState();
   }
+
+  /**
+   * 홈의 옷장 색인.
+   *
+   * 이 앱에서 다시 열 이유가 되는 유일한 물건이 옷장 통계인데, 더보기 → 스크롤 →
+   * 맨 아래 패널로 3단계 깊이에 묻혀 있었다. "기록이 쌓이는 것 자체가 이 앱의
+   * 시각적 보상" 이라면 그것이 첫 화면에 있어야 한다.
+   */
+  function renderHomeIndex() {
+    var s = state.stats.data;
+    var looks = state.home.lookCount || 0;
+    var total = (s && s.total != null) ? s.total : state.closet.totalElements;
+    var never = (s && s.neverUsed != null) ? s.neverUsed : null;
+
+    // 아무것도 쌓이지 않았으면 0 을 세 개 늘어놓지 않는다. 빈 상태가 이미 말하고 있다.
+    var meaningful = looks > 0 || (total || 0) > 0;
+    show($('#home-index-section'), meaningful);
+    if (!meaningful) return;
+
+    var cells = [
+      { label: 'Looks', value: looks, unit: '개', to: 'history' },
+      { label: 'Wardrobe', value: total || 0, unit: '벌', to: 'closet' }
+    ];
+    if (never != null) cells.push({ label: 'Never worn', value: never, unit: '벌', to: 'closet' });
+
+    $('#home-index').innerHTML = cells.map(function (c) {
+      return '<button class="statcell" type="button" data-index-go="' + esc(c.to) + '">' +
+        '<span class="statcell__label indexlabel">' + esc(c.label) + '</span>' +
+        '<span class="statcell__value num">' + esc(c.value) +
+          '<span class="statcell__unit">' + esc(c.unit) + '</span></span>' +
+      '</button>';
+    }).join('');
+  }
+
+  $('#home-index').addEventListener('click', function (e) {
+    var cell = e.target.closest('[data-index-go]');
+    if (cell) navigate(cell.dataset.indexGo);
+  });
 
   $('#btn-see-all').addEventListener('click', function () { navigate('history'); });
   $('#btn-history-go-home').addEventListener('click', function () { navigate('home'); });
