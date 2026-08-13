@@ -60,7 +60,11 @@
     --card:         #1E1B17;
     --ink:          #F2EEE7;
     --ink-soft:     #A8A196;
-    --ink-faint:    #6E6659;
+    /* 다크에서는 라이트와 같은 밝기 차를 쓰면 소형 텍스트가 읽히지 않는다.
+       11~13px 이 이 색으로 나가므로(카운트·인덱스 라벨·TOP/BTM/OUT 바닥판)
+       가장 어두운 바닥(--paper-sunk) 위에서도 4.5:1 을 넘는 값으로 올린다.
+       #8C8377 → paper 5.01:1 · paper-sunk 5.24:1 · card 4.60:1 */
+    --ink-faint:    #8C8377;
     --rule:         #2C2822;
     --accent:       #9A90F5;
     --accent-soft:  #23204A;
@@ -644,6 +648,41 @@ input:focus-visible, textarea:focus-visible { outline: 2px solid var(--ink); out
 .looks--grid .look__items { display: none; }
 .looks--grid .look__stamp { display: block; margin-top: var(--s1); }
 
+/* 축소판 LOOK — 옷 상세의 "이 옷이 쓰인 코디" 자리.
+   큰 카드를 그대로 쓰면 카드 하나가 화면을 채워, 코디 서너 개만 돼도
+   이 자리에서만 스크롤이 끝없이 길어진다. 여기서는 훑어보기만 하면 되므로
+   가로로 넘기는 작은 카드로 줄인다. 개수가 늘어도 자리 높이가 그대로다. */
+.minilooks {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 128px;
+  justify-content: start;
+  gap: var(--s4);
+  margin-top: var(--s4);
+  padding-bottom: var(--s2);
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x proximity;
+  scrollbar-width: none;
+}
+.minilooks::-webkit-scrollbar { display: none; }
+.minilook {
+  appearance: none; border: 0; background: none; padding: 0;
+  display: block; width: 100%; min-width: 0; text-align: left;
+  color: inherit; font: inherit; cursor: pointer;
+  scroll-snap-align: start;
+  transition: transform var(--fast) var(--ease);
+}
+.minilook:active { transform: scale(.98); }
+.minilook__no { display: block; margin-top: var(--s2); }
+.minilook__title {
+  display: block;
+  font-size: 13px; font-weight: 700; letter-spacing: -.02em;
+  margin-top: var(--s1);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.minilook__date { display: block; margin-top: 2px; }
+
 /* ------------------------------------------------------------
    옷 카드 — 테두리 없이 사진 자체가 카드다
    ------------------------------------------------------------ */
@@ -897,6 +936,8 @@ input:focus-visible, textarea:focus-visible { outline: 2px solid var(--ink); out
 
 .picker { display: flex; gap: var(--s4); align-items: flex-start; }
 .picker__side { display: grid; gap: var(--s2); align-content: start; flex: 1; min-width: 0; }
+/* 그리드 칸을 꽉 채우면 "사진 빼기" 가 가운데 정렬돼 제목처럼 보인다. */
+.picker__side .btn { justify-self: start; }
 .picker__hint { font-size: 13px; color: var(--ink-faint); }
 .picker__empty {
   position: absolute; inset: 0;

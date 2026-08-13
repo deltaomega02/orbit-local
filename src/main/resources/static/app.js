@@ -267,6 +267,23 @@
     '</article>';
   }
 
+  /**
+   * 축소판 LOOK 카드 — 옷 상세의 "이 옷이 쓰인 코디" 자리에서만 쓴다.
+   * 목록 화면의 큰 카드를 그대로 쓰면 카드 하나가 화면을 채워, 코디가 서너 개만
+   * 돼도 이 자리에서 스크롤이 끝없이 길어졌다. 여기서 필요한 건 "어디에 썼나"
+   * 를 훑는 것뿐이라, 가로로 넘기는 작은 카드로 줄인다.
+   */
+  function miniLookHtml(c) {
+    var title = c.title || '오늘의 코디';
+    return '<button class="minilook" type="button" data-coord-open="' + esc(c.id) + '" ' +
+            'data-coord-title="' + esc(title) + '">' +
+      lookFrameHtml(c) +
+      '<span class="indexlabel minilook__no">' + esc(lookNo(c)) + '</span>' +
+      '<span class="minilook__title">' + esc(title) + '</span>' +
+      '<span class="num minilook__date">' + esc(dateOf(c.createdAt)) + '</span>' +
+    '</button>';
+  }
+
   /* ================================================================
    * 상태
    * ================================================================ */
@@ -930,9 +947,10 @@
     show($('#closet-count'), items.length > 0);
 
     if (items.length > 0) {
+      // 섹션 라벨의 영문은 디자인이지만, 개수를 세는 문장은 사용자의 말이어야 한다.
       $('#closet-count').textContent = state.closet.filter === 'ALL'
         ? state.closet.totalElements + '벌'
-        : items.length + ' ' + catOf(state.closet.filter).en.toLowerCase();
+        : catOf(state.closet.filter).label + ' ' + items.length + '벌';
     }
 
     closetGrid.innerHTML = items.map(clothesCardHtml).join('');
@@ -1019,7 +1037,7 @@
 
     var usedIn = state.item.usedIn;
     var usedInBlock = usedIn.length
-      ? '<div class="looks">' + usedIn.map(lookHtml).join('') + '</div>'
+      ? '<div class="minilooks">' + usedIn.map(miniLookHtml).join('') + '</div>'
       : '<div class="empty empty--inline"><p class="empty__desc">' +
           (state.item.usedInUnavailable ? '아직 정리된 코디가 없어요.' : '이 옷이 쓰인 코디가 아직 없어요.') +
         '</p></div>';
@@ -1042,7 +1060,8 @@
 
         '<section class="section">' +
           '<p class="sectionlabel">Worn In</p>' +
-          '<p class="section__sub">이 옷이 쓰인 코디</p>' +
+          '<p class="section__sub">이 옷이 쓰인 코디' +
+            (usedIn.length ? ' ' + usedIn.length + '건' : '') + '</p>' +
           usedInBlock +
         '</section>' +
 
@@ -1669,7 +1688,19 @@
     setNote($('#add-error'), '');
     setNote($('#analyze-warn'), '');
     setCategory('TOP');
-    $('#btn-add-submit').disabled = false;
+    setAnalyzing(false);
+  }
+
+  /**
+   * 사진을 읽는 동안 저장을 막는다. 그냥 잠그기만 하면 "왜 안 눌리지" 가 되므로
+   * 버튼이 스스로 무엇을 기다리는지 말하게 한다.
+   */
+  function setAnalyzing(on) {
+    var btn = $('#btn-add-submit');
+    btn.disabled = !!on;
+    if (on) btn.setAttribute('aria-busy', 'true');
+    else btn.removeAttribute('aria-busy');
+    $('.btn__text', btn).textContent = on ? '사진 읽는 중…' : '저장';
   }
 
   /** 분석 결과 안내. 시트 안에서는 토스트 대신 인라인 노트를 쓴다. */
@@ -1728,7 +1759,7 @@
     show($('#btn-clear-image'), false);
     show($('#analyze-loading'), false);
     setNote($('#analyze-warn'), '');
-    $('#btn-add-submit').disabled = false;
+    setAnalyzing(false);
   });
 
   /**
@@ -1768,7 +1799,7 @@
     state.analyzeAbort = ctrl;
 
     show($('#analyze-loading'), true);
-    $('#btn-add-submit').disabled = true;
+    setAnalyzing(true);
 
     api.clothes.analyze(file, ctrl ? ctrl.signal : undefined)
       .then(function (result) {
@@ -1794,7 +1825,7 @@
       .finally(function () {
         if (state.addImage !== file && state.addImage !== null) return;
         show($('#analyze-loading'), false);
-        $('#btn-add-submit').disabled = false;
+        setAnalyzing(false);
         state.analyzeAbort = null;
         if (!$('#add-name').value) $('#add-name').focus();
       });
