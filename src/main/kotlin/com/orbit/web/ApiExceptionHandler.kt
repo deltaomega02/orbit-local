@@ -3,7 +3,9 @@ package com.orbit.web
 import com.orbit.ai.AiCallFailedException
 import com.orbit.ai.AiInvalidResponseException
 import com.orbit.ai.AiUnavailableException
+import com.orbit.media.ImagePixelsTooLargeException
 import com.orbit.media.ImageTooLargeException
+import com.orbit.media.MediaProperties
 import com.orbit.media.UnsupportedImageTypeException
 import com.orbit.security.InvalidTokenException
 import com.orbit.service.ClothesNotFoundException
@@ -39,7 +41,14 @@ data class ErrorResponse(val error: String, val detail: String)
  * 시도하는 코드가 생겼다.
  */
 @RestControllerAdvice
-class ApiExceptionHandler {
+class ApiExceptionHandler(private val mediaProperties: MediaProperties) {
+
+    /** 안내에 쓸 상한. 바이트가 아니라 사람이 자기 사진과 비교할 수 있는 단위로 말한다. */
+    private val maxFileSizeMb: Long get() = mediaProperties.maxFileSize.toBytes() / BYTES_PER_MB
+
+    private companion object {
+        const val BYTES_PER_MB = 1024 * 1024
+    }
 
     @ExceptionHandler(DuplicateCoordinationException::class)
     fun handleDuplicate(e: DuplicateCoordinationException): ResponseEntity<DuplicateResponse> =
@@ -129,20 +138,52 @@ class ApiExceptionHandler {
             .body(ErrorResponse("unsupported_image_type", "jpeg/png/webp の画像だけアップロードできます"))
 
     /**
-     * 크기 초과는 두 경로로 들어온다. 애플리케이션 상한([ImageTooLargeException])과
-     * 서블릿 컨테이너 상한(MaxUploadSizeExceededException). 컨테이너 쪽은 요청을 다 읽기
-     * 전에 끊어주므로 실제 DoS 방어는 그쪽이 하고, 애플리케이션 상한이 그 뒤를 받친다.
-     * 응답 모양은 같아야 하므로 두 예외를 같은 error 코드로 모은다.
+     * 크기 초과는 세 경로로 들어온다. 애플리케이션 상한([ImageTooLargeException]),
+     * 픽셀 수 상한([ImagePixelsTooLargeException]), 서블릿 컨테이너 상한
+     * (MaxUploadSizeExceededException). 컨테이너 쪽은 요청을 다 읽기 전에 끊어주므로
+     * 실제 DoS 방어는 그쪽이 하고, 나머지 둘이 그 뒤를 받친다.
+     * 응답 모양은 같아야 하므로 셋을 같은 error 코드로 모은다.
+     *
+     * **문구가 바뀐 이유.** 예전에는 `画像の上限は8388608バイトです` 였다. 바이트 수는
+     * 사람이 자기 사진과 비교할 수 있는 단위가 아니고, 무엇보다 그 시절에는 사용자가
+     * 이 문장을 **자주** 봤다. 지금은 서버가 저장 전에 사진을 줄이므로
+     * ([com.orbit.media.ImageNormalizer]) 여기까지 오는 것은 사실상 사진이 아닌 파일이다.
+     * 그래서 문구도 "당신이 뭘 잘못했다"가 아니라 "이건 사진이 아닌 것 같다"로 쓴다.
      */
     @ExceptionHandler(ImageTooLargeException::class)
     fun handleImageTooLarge(e: ImageTooLargeException): ResponseEntity<ErrorResponse> =
         ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE)
-            .body(ErrorResponse("image_too_large", "画像の上限は${e.maxBytes}バイトです"))
+            .body(ErrorResponse("image_too_large", tooLargeMessage(e.maxBytes / BYTES_PER_MB)))
 
+    private fun tooLargeMessage(limitMb: Long) =
+        "画像は${limitMb}MBまでです。写真ではないファイルかもしれません。もう一度確認してください。"
+
+    /**
+     * 픽셀 수가 너무 많다. 바이트 상한과 다른 축이라 문구도 다르다 — "40MB 이하인데
+     * 왜 크다는 거냐"로 읽히면 사용자는 손쓸 방법이 없다.
+     */
+    @ExceptionHandler(ImagePixelsTooLargeException::class)
+    fun handleImagePixelsTooLarge(e: ImagePixelsTooLargeException): ResponseEntity<ErrorResponse> =
+        ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE).body(
+            ErrorResponse(
+                "image_too_large",
+                "画像の解像度が大きすぎます。約${e.maxPixels / 1_000_000}メガピクセルまで対応しています。",
+            ),
+        )
+
+    /**
+     * 컨테이너가 먼저 끊은 경우. **실제 사용자가 보는 것은 거의 항상 이쪽이다.**
+     *
+     * 두 상한이 같은 값(40MB)이라, 넘치는 요청은 애플리케이션까지 오기 전에 Tomcat 이
+     * 끊는다. 그런데 예전에는 이쪽 문구만 "アップロードできるサイズを超えています" 로
+     * 상한을 말하지 않았다 — 정작 친절하게 써 둔 문장은 도달할 수 없는 코드였고,
+     * 사용자는 몇 MB 까지 되는지 끝내 알 수 없었다(실제로 서버를 띄워 확인하고 찾았다).
+     * 어느 층이 끊었는지는 사용자의 관심사가 아니므로 같은 문장을 준다.
+     */
     @ExceptionHandler(MaxUploadSizeExceededException::class)
     fun handleMaxUpload(e: MaxUploadSizeExceededException): ResponseEntity<ErrorResponse> =
         ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE)
-            .body(ErrorResponse("image_too_large", "アップロードできるサイズを超えています"))
+            .body(ErrorResponse("image_too_large", tooLargeMessage(maxFileSizeMb)))
 
     // ── AI ────────────────────────────────────────────────────────
 

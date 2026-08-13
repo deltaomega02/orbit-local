@@ -23,11 +23,38 @@ data class MediaProperties(
     /** 미디어 루트. 저장소에는 커밋되지 않도록 .gitignore 의 `data/` 안을 기본값으로 둔다. */
     val dir: String = "./data/media",
     /**
-     * 업로드 상한. 원본 Django 는 상한이 없어 큰 파일 몇 개로 디스크와 메모리를 모두
-     * 밀어낼 수 있었다. 서블릿 컨테이너 상한(spring.servlet.multipart)도 함께 걸지만,
+     * 업로드 상한. 서블릿 컨테이너 상한(spring.servlet.multipart)도 함께 걸지만,
      * 그건 "컨테이너가 버퍼링을 멈추는 선"이고 이 값은 "애플리케이션이 받아들이는 선"이다.
+     *
+     * **이 값은 사용자를 막는 선이 아니라 "이건 사진이 아니다"를 거르는 안전선이다.**
+     * 예전에는 8MB 였고, 그건 요즘 폰 사진(12MP·HDR·연사 합성)이 예사로 넘는 값이라
+     * 멀쩡한 사진이 413 으로 거절됐다. 사용자는 왜 안 되는지도, 사진을 어떻게 줄이는지도
+     * 모른다. 그래서 받는 선은 40MB 로 넉넉히 열고, 디스크와 AI 비용은 상한이 아니라
+     * 저장 직전의 축소([ImageNormalizer.forStorage])로 통제한다.
      */
-    val maxFileSize: DataSize = DataSize.ofMegabytes(8),
+    val maxFileSize: DataSize = DataSize.ofMegabytes(40),
+    /**
+     * 저장본의 긴 변 상한(px). 넘으면 비율을 유지해 줄인다.
+     *
+     * 1600px 인 이유: 이 앱에서 사진이 가장 크게 쓰이는 자리가 상세 화면과 가상 착용
+     * 입력인데, 둘 다 1600px 면 충분하고 그 위는 디스크만 먹는다. 4000×3000 짜리
+     * 폰 사진 한 장이 4MB 라면 1600px JPEG 로는 대략 300KB 안팎이 된다.
+     */
+    val maxEdge: Int = 1600,
+    /** AI 로 보내는 전송본의 긴 변 상한(px). 저장본과 기준이 다른 이유는 [ImageNormalizer.forAiPayload] 참고. */
+    val aiMaxEdge: Int = 768,
+    /**
+     * 재인코딩 JPEG 품질. 0.85 는 사진에서 육안으로 원본과 구별하기 어려우면서
+     * 파일 크기가 크게 떨어지는 지점이다. 더 올리면 크기만 늘고, 더 내리면 옷의
+     * 질감(니트 짜임·데님 결)에서 뭉개짐이 보이기 시작한다.
+     */
+    val jpegQuality: Float = 0.85f,
+    /**
+     * 픽셀 수 상한. [maxFileSize] 와 **다른 축의 방어**다 — 잘 압축된 PNG 는 20MB 로도
+     * 3만×3만 이 될 수 있고, 디코드하면 픽셀 버퍼만 수 GB 라 설치본의 힙을 그냥 넘긴다.
+     * 5천만 픽셀은 지금 나오는 폰 카메라(48~50MP)의 최대치를 다 덮는 값이다.
+     */
+    val maxPixels: Long = 50_000_000,
 )
 
 @Configuration
@@ -93,6 +120,7 @@ data class StoredMedia(val relativePath: String, val type: ImageType)
 @Component
 class MediaStorage(
     private val properties: MediaProperties,
+    private val normalizer: ImageNormalizer,
     private val clock: Clock,
 ) {
     /** 루트를 정규화해 두고, 모든 경로 해석이 이 밖으로 나가지 못하게 막는다. */
@@ -119,17 +147,30 @@ class MediaStorage(
         return actual
     }
 
+    /**
+     * 검증 → **정규화** → 저장.
+     *
+     * 정규화가 여기 있는 것이 요점이다. 축소·회전 보정을 호출부에 맡기면 언젠가 한
+     * 경로가 빠지고, 그 경로로 들어온 사진만 옆으로 누워서 저장된다(경로 검증을
+     * [resolve] 한 곳에 모은 것과 같은 이유다). 지금 store 를 부르는 곳은 옷 사진·전신
+     * 사진·가상 착용 결과 셋인데, 셋 다 같은 규칙을 받아야 한다.
+     *
+     * 확장자는 **정규화된 형식**을 따른다. PNG 로 올라온 사진이 JPEG 로 나갔는데
+     * 경로만 `.png` 로 남으면 [contentTypeOf] 가 거짓말을 하고 브라우저가 깨진 이미지를
+     * 그린다.
+     */
     fun store(category: String, bytes: ByteArray, declaredContentType: String?): StoredMedia {
         val actual = validate(bytes, declaredContentType)
+        val normalized = normalizer.forStorage(bytes, actual)
         val today = LocalDate.now(clock)
         val relative = "%s/%04d/%02d/%02d/%s.%s".format(
             category, today.year, today.monthValue, today.dayOfMonth,
-            UUID.randomUUID(), actual.extension,
+            UUID.randomUUID(), normalized.type.extension,
         )
         val target = resolve(relative)
         Files.createDirectories(target.parent)
-        Files.write(target, bytes)
-        return StoredMedia(relative, actual)
+        Files.write(target, normalized.bytes)
+        return StoredMedia(relative, normalized.type)
     }
 
     /** 없으면 null. 파일이 사라진 것과 애초에 없는 것을 호출부가 구분할 이유가 없다. */

@@ -28,6 +28,21 @@ dependencies {
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
     implementation("org.jetbrains.kotlin:kotlin-reflect")
 
+    /*
+     * EXIF **읽기** 전용. 폰으로 세로로 찍은 사진은 가로로 저장되고 "돌려서 보여라"는
+     * 표시만 EXIF 에 들어간다. 그 태그를 못 읽으면 사진이 옆으로 누운 채 저장된다.
+     *
+     * 직접 파싱하지 않은 이유: "APP1 하나만 읽으면 된다"가 사실이 아니다. 실제 폰
+     * 사진에는 JFIF·XMP·ICC·MPF 세그먼트가 EXIF 앞뒤로 섞여 들고, 그 안의 TIFF 블록은
+     * 엔디안이 두 가지이며, 오프셋을 잘못 따라가면 조용히 엉뚱한 값을 읽는다. 사진이
+     * 90도 잘못 돌아가는 버그는 테스트로도 잘 안 걸린다 — 손으로 짠 파서가 가장
+     * 비싸게 틀리는 자리다. 이 라이브러리는 의존성이 xmpcore 하나뿐이고 읽기만 한다.
+     *
+     * 쓰기 기능은 쓰지 않는다. 우리는 EXIF 를 고쳐 쓰는 게 아니라 방향을 픽셀에 굽고
+     * 메타데이터를 통째로 버린다(재인코딩의 부수 효과다).
+     */
+    implementation("com.drewnoakes:metadata-extractor:2.19.0")
+
     // JWT. impl/jackson 은 런타임에만 필요하므로 컴파일 클래스패스에서 뺀다 —
     // 애플리케이션 코드가 jjwt 내부 구현 클래스에 실수로 의존하는 것을 막는다.
     implementation("io.jsonwebtoken:jjwt-api:0.12.6")

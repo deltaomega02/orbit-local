@@ -151,7 +151,7 @@ class MediaApiTest {
      */
     @Test
     fun `상한을 넘는 이미지는 413 으로 거절한다`() {
-        val oversized = pngBytes() + ByteArray(70_000) // 테스트 설정 상한은 64KB
+        val oversized = pngBytes() + ByteArray(2_200_000) // 테스트 설정 상한은 2MB
 
         mockMvc.perform(
             multipart("/api/clothes")
