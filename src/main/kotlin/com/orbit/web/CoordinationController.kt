@@ -134,6 +134,27 @@ class CoordinationController(
     ): TryOnResponse = TryOnResponse(requireNotNull(mediaUrl(outfitAiService.generateTryOn(user.id, id))))
 
     /**
+     * 가상 착용 이미지만 삭제. 코디는 그대로 남고 `tryOnImageUrl` 이 null 로 돌아간다.
+     *
+     * 지울 이미지가 없어도 **204** 다 — 결과 상태("이 코디에 가상 착용 이미지가 없다")가
+     * 같기 때문이다. 이미지가 없다고 404 를 주면 클라이언트가 지우기 전에 상태를 한 번
+     * 더 조회해야 하고, 두 번 누른 사용자에게 실패처럼 보인다. 반대로 **남의 코디와 없는
+     * 코디는 404** 다. 그건 "이미 그 상태"가 아니라 애초에 다룰 자격이 없는 자원이다.
+     *
+     * 삭제 후 다시 `POST /{id}/tryon` 을 부르면 새로 생성된다. 생성이 멱등이라
+     * (이미 있으면 만들지 않는다) 이 엔드포인트가 없으면 한 번 잘못 나온 결과를
+     * 되돌릴 방법이 룩 전체 삭제뿐이었다.
+     */
+    @DeleteMapping("/{id}/tryon")
+    fun deleteTryOn(
+        @AuthenticationPrincipal user: AuthenticatedUser,
+        @PathVariable id: Long,
+    ): ResponseEntity<Void> {
+        service.deleteTryOn(user.id, id)
+        return ResponseEntity.noContent().build()
+    }
+
+    /**
      * 소유자를 `X-Owner-Id` 헤더가 아니라 검증된 토큰에서 받는다.
      * 헤더 방식은 값을 보내는 쪽이 마음대로 바꿀 수 있어 사실상 인증이 아니었다.
      */

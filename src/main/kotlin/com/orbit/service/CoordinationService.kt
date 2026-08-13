@@ -144,13 +144,45 @@ class CoordinationService(
         val tryOnImagePath = coordination.tryOnImagePath
         coordinationRepository.delete(coordination)
 
-        if (tryOnImagePath != null) {
-            TransactionSynchronizationManager.registerSynchronization(
-                object : TransactionSynchronization {
-                    override fun afterCommit() = mediaStorage.deleteQuietly(tryOnImagePath)
-                },
-            )
-        }
+        if (tryOnImagePath != null) deleteFileAfterCommit(tryOnImagePath)
+    }
+
+    /**
+     * 가상 착용 이미지만 지운다. **코디는 남는다.**
+     *
+     * 이 메서드가 없던 동안 사용자에게 남은 선택지는 "룩을 통째로 지우기" 하나뿐이었다.
+     * 그런데 합성 결과가 엉뚱한 사람으로 나오는 일은 실제로 있고, 그때 사용자가 버리고
+     * 싶은 것은 **이미지 한 장**이지 조합·추천 이유·LOOK 번호가 아니다. 지우고 다시
+     * 만들 수 있어야 [OutfitAiService.generateTryOn] 의 멱등성도 막다른 길이 되지 않는다
+     * (이미 있으면 다시 만들지 않으므로, 지우는 길이 없으면 영영 그 이미지에 묶인다).
+     *
+     * **없어도 204 다(멱등).** "가상 착용 이미지가 없다"는 목표 상태는 이미 달성돼
+     * 있고, 여기서 404 를 주면 클라이언트가 지우기 전에 조회를 한 번 더 해야 한다.
+     * 반면 **남의 코디와 없는 코디는 404** 다 — 그건 상태가 아니라 권한의 문제다.
+     *
+     * 파일 삭제는 [delete] 와 같은 이유로 커밋 이후로 미룬다. 순서를 뒤집으면
+     * 롤백됐을 때 행에는 경로가 남았는데 파일은 사라져 깨진 이미지가 화면에 뜬다.
+     * 반대 순서의 최악은 아무도 참조하지 않는 파일 하나가 남는 것이다.
+     */
+    @Transactional
+    fun deleteTryOn(ownerId: Long, id: Long) {
+        val coordination = coordinationRepository.findByIdAndOwnerId(id, ownerId)
+            ?: throw CoordinationNotFoundException(id)
+        val tryOnImagePath = coordination.tryOnImagePath ?: return
+        coordination.tryOnImagePath = null // 더티 체킹으로 반영된다
+        deleteFileAfterCommit(tryOnImagePath)
+    }
+
+    /**
+     * 커밋이 실제로 끝난 뒤에만 파일을 지운다. 트랜잭션이 롤백되면 아무 일도 일어나지
+     * 않는다 — DB 는 그대로인데 파일만 없어지는 상태를 만들지 않는 것이 요점이다.
+     */
+    private fun deleteFileAfterCommit(relativePath: String) {
+        TransactionSynchronizationManager.registerSynchronization(
+            object : TransactionSynchronization {
+                override fun afterCommit() = mediaStorage.deleteQuietly(relativePath)
+            },
+        )
     }
 
     /**

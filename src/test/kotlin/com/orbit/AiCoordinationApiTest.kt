@@ -5,6 +5,7 @@ import com.orbit.ai.ClothingAnalyzer
 import com.orbit.ai.OutfitRecommender
 import com.orbit.ai.OutfitSuggestion
 import com.orbit.ai.TryOnImageGenerator
+import com.orbit.media.MediaStorage
 import com.orbit.repository.ClothesRepository
 import com.orbit.repository.CoordinationRepository
 import com.orbit.repository.UserRepository
@@ -21,12 +22,15 @@ import org.springframework.http.HttpMethod
 import org.springframework.http.MediaType
 import org.springframework.mock.web.MockMultipartFile
 import org.springframework.test.web.servlet.MockMvc
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath
 import org.springframework.test.web.servlet.result.MockMvcResultMatchers.status
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /**
@@ -48,6 +52,7 @@ class AiCoordinationApiTest {
     @Autowired lateinit var userRepository: UserRepository
     @Autowired lateinit var clothesRepository: ClothesRepository
     @Autowired lateinit var coordinationRepository: CoordinationRepository
+    @Autowired lateinit var mediaStorage: MediaStorage
     @Autowired lateinit var context: ApplicationContext
 
     @Autowired lateinit var analyzer: FakeClothingAnalyzer
@@ -90,6 +95,29 @@ class AiCoordinationApiTest {
             .file(MockMultipartFile("image", "body.png", "image/png", pngBytes()))
             .header(HttpHeaders.AUTHORIZATION, session.bearer),
     ).andExpect(status().isOk)
+
+    private fun deleteTryOn(coordinationId: Long, session: Session = me) = mockMvc.perform(
+        delete("/api/coordinations/$coordinationId/tryon").header(HttpHeaders.AUTHORIZATION, session.bearer),
+    )
+
+    /** 옷 두 벌 · 전신 사진 · 추천 · 가상 착용까지 끝낸 코디 하나. */
+    private fun coordinationWithTryOn(): Long {
+        addClothes(me, "셔츠", "TOP")
+        addClothes(me, "슬랙스", "BOTTOM")
+        uploadBodyPhoto()
+        val body = recommend().andExpect(status().isCreated).andReturn().response.contentAsString
+        val id = api.json(body)["id"].toString().toLong()
+        mockMvc.perform(post("/api/coordinations/$id/tryon").header(HttpHeaders.AUTHORIZATION, me.bearer))
+            .andExpect(status().isOk)
+        return id
+    }
+
+    private fun tryOnUrlOf(coordinationId: Long, session: Session = me): Any? {
+        val body = mockMvc.perform(
+            get("/api/coordinations/$coordinationId").header(HttpHeaders.AUTHORIZATION, session.bearer),
+        ).andExpect(status().isOk).andReturn().response.contentAsString
+        return api.json(body)["tryOnImageUrl"]
+    }
 
     // ── 분석 ──────────────────────────────────────────────────────
 
@@ -263,6 +291,68 @@ class AiCoordinationApiTest {
         mockMvc.perform(get(url).header(HttpHeaders.AUTHORIZATION, other.bearer)).andExpect(status().isNotFound)
     }
 
+    /**
+     * 가상 착용 결과가 엉뚱한 사람으로 나오는 일은 실제로 있다. 그때 사용자가 버리고
+     * 싶은 것은 이미지 한 장이지 조합·추천 이유·LOOK 번호가 아니다. 이 엔드포인트가
+     * 없던 동안 남은 선택지는 룩을 통째로 지우는 것뿐이었다.
+     */
+    @Test
+    fun `가상 착용 이미지만 지우면 코디는 남고 tryOnImageUrl 이 null 로 돌아온다`() {
+        val coordinationId = coordinationWithTryOn()
+        val imageUrl = tryOnUrlOf(coordinationId) as String
+        val storedPath = imageUrl.removePrefix("/media/")
+
+        deleteTryOn(coordinationId).andExpect(status().isNoContent)
+
+        mockMvc.perform(get("/api/coordinations/$coordinationId").header(HttpHeaders.AUTHORIZATION, me.bearer))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.tryOnImageUrl").isEmpty)
+            // 코디 자체는 살아 있어야 한다. 이미지를 지우는 것과 룩을 버리는 것은 다른 일이다.
+            .andExpect(jsonPath("$.items.length()").value(2))
+            .andExpect(jsonPath("$.lookNo").isNumber)
+
+        // 아무도 참조하지 않는 파일을 남기지 않는다. 행만 지우면 고아 파일이 쌓인다.
+        assertNull(mediaStorage.read(storedPath), "가상 착용 이미지 파일이 그대로 남았다")
+    }
+
+    @Test
+    fun `가상 착용 이미지가 없어도 삭제는 204 다`() {
+        val coordinationId = coordinationWithTryOn()
+
+        deleteTryOn(coordinationId).andExpect(status().isNoContent)
+        // 두 번째도 204. 결과 상태가 같으므로 404 를 줄 이유가 없다 —
+        // 404 면 클라이언트가 지우기 전에 상태를 한 번 더 조회해야 한다.
+        deleteTryOn(coordinationId).andExpect(status().isNoContent)
+    }
+
+    /** 생성이 멱등이라, 지우는 길이 없으면 한 번 잘못 나온 결과에 영영 묶인다. */
+    @Test
+    fun `가상 착용을 지우면 다시 만들 수 있다`() {
+        val coordinationId = coordinationWithTryOn()
+        assertEquals(1, tryOn.calls)
+
+        deleteTryOn(coordinationId).andExpect(status().isNoContent)
+
+        mockMvc.perform(post("/api/coordinations/$coordinationId/tryon").header(HttpHeaders.AUTHORIZATION, me.bearer))
+            .andExpect(status().isOk)
+            .andExpect(jsonPath("$.tryOnImageUrl").isString)
+        assertEquals(2, tryOn.calls, "지운 뒤에는 생성기를 다시 불러야 한다")
+    }
+
+    @Test
+    fun `남의 코디의 가상 착용 이미지는 지울 수 없다`() {
+        val coordinationId = coordinationWithTryOn()
+
+        mockMvc.perform(
+            delete("/api/coordinations/$coordinationId/tryon").header(HttpHeaders.AUTHORIZATION, other.bearer),
+        )
+            .andExpect(status().isNotFound)
+            .andExpect(jsonPath("$.error").value("not_found"))
+
+        // 남이 요청했다고 내 이미지가 사라지면 안 된다
+        assertNotNull(tryOnUrlOf(coordinationId))
+    }
+
     @Test
     fun `전신 사진이 없으면 가상 착용은 400 이다`() {
         addClothes(me, "셔츠", "TOP")
@@ -316,6 +406,7 @@ class AiCoordinationApiTest {
     fun `AI 엔드포인트도 토큰 없이는 전부 401`() {
         mockMvc.perform(post("/api/coordinations/recommend")).andExpect(status().isUnauthorized)
         mockMvc.perform(post("/api/coordinations/1/tryon")).andExpect(status().isUnauthorized)
+        mockMvc.perform(delete("/api/coordinations/1/tryon")).andExpect(status().isUnauthorized)
         mockMvc.perform(get("/api/users/me")).andExpect(status().isUnauthorized)
         mockMvc.perform(
             multipart("/api/clothes/analyze")
