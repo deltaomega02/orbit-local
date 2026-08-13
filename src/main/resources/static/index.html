@@ -703,21 +703,25 @@
 
       <div class="field">
         <label for="add-fit">핏</label>
-        <input type="text" id="add-fit" maxlength="30" list="list-fit" placeholder="예) 오버핏 (선택)" />
+        <input type="text" id="add-fit" maxlength="20" list="list-fit" placeholder="예) 오버핏 (선택)" />
         <datalist id="list-fit">
-          <option value="오버핏"></option><option value="레귤러핏"></option>
-          <option value="슬림핏"></option><option value="와이드"></option>
+          <option value="오버핏"></option><option value="레귤러"></option>
+          <option value="슬림"></option><option value="와이드"></option>
         </datalist>
       </div>
 
-      <div class="field">
+      <!-- 계절은 실제로 쓰이는 값이 몇 개 안 된다. 칩으로 한 번에 넣게 하되
+           고르는 것으로 막지는 않는다 — 칸은 언제나 직접 고쳐 쓸 수 있다. -->
+      <div class="field field--wide">
         <label for="add-season">계절</label>
-        <input type="text" id="add-season" maxlength="30" list="list-season" placeholder="예) 겨울 (선택)" />
-        <datalist id="list-season">
-          <option value="봄"></option><option value="여름"></option>
-          <option value="가을"></option><option value="겨울"></option>
-          <option value="사계절"></option>
-        </datalist>
+        <div class="chips chips--wrap chips--field" id="add-season-chips"
+             role="group" aria-label="자주 쓰는 계절">
+          <button class="chip" type="button" data-season="봄·가을" aria-pressed="false">봄·가을</button>
+          <button class="chip" type="button" data-season="여름" aria-pressed="false">여름</button>
+          <button class="chip" type="button" data-season="겨울" aria-pressed="false">겨울</button>
+          <button class="chip" type="button" data-season="사계절" aria-pressed="false">사계절</button>
+        </div>
+        <input type="text" id="add-season" maxlength="20" placeholder="직접 적어도 돼요 (선택)" />
       </div>
     </div>
 

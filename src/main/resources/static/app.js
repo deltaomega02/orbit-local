@@ -124,7 +124,7 @@
       case 'invalid_key': return '키가 올바르지 않아요. 복사한 글자를 다시 확인해 주세요.';
       // AI 가 상의·하의를 갖춘 조합을 내놓지 못한 경우. 서버가 걸러 낸 것이므로
       // 사용자가 고칠 수 있는 것은 없다. 다시 해 보라고만 말한다.
-      case 'ai_invalid_response': return '추천을 만들지 못했어요. 다시 시도해 주세요.';
+      case 'ai_invalid_response': return '추천을 만들지 못했어요. 잠시 뒤 다시 시도해 주세요.';
     }
     switch (err.status) {
       case 0: return '서버에 연결할 수 없어요. Orbit 이 켜져 있는지 확인해 주세요.';
@@ -133,7 +133,7 @@
       case 403: return '권한이 없어요.';
       case 404: return '찾을 수 없어요. 새로고침 후 다시 시도해 주세요.';
       case 413: return '사진 용량이 너무 커요. 10MB 이하로 올려 주세요.';
-      case 502: return '추천을 만들지 못했어요. 다시 시도해 주세요.';
+      case 502: return '추천을 만들지 못했어요. 잠시 뒤 다시 시도해 주세요.';
       case 503: return 'AI 가 지금 응답하지 않아요. 잠시 후 다시 시도해 주세요.';
     }
     return '문제가 생겼어요. 잠시 후 다시 시도해 주세요.';
@@ -1163,13 +1163,15 @@
     show($('#home-error-action'), false);
     recStart();
 
-    recommendWithRetry(situation, function (attempt) {
-      // 서버가 409(이미 입은 조합)를 주면 클라이언트가 같은 요청을 다시 보낸다.
+    recommendWithRetry(situation, function (retry) {
+      // 서버가 다시 해 볼 만한 실패를 주면 클라이언트가 같은 요청을 다시 보낸다.
       // 그동안 버튼이 "고르는 중…" 에 머물러 있으면 사용자는 그냥 느린 줄 안다.
-      // 무엇을 다시 하고 있는지, 몇 번째인지를 진행 바 문구로 꺼낸다.
-      recAttempt = attempt;
+      // 무엇을 다시 하고 있는지를 진행 바 문구로 꺼낸다.
+      recAttempt = retry.n;
       if (recProgress) {
-        recProgress.hold('같은 조합이 나와서 다시 고르는 중… (' + attempt + '/' + MAX_DUP_RETRY + ')');
+        recProgress.hold(retry.kind === 'dup'
+          ? '같은 조합이 나와서 다시 고르는 중… (' + retry.n + '/' + retry.max + ')'
+          : '조합이 제대로 만들어지지 않아 다시 고르는 중…');
       }
       recArmSlowHint();
     }).then(function (created) {
@@ -1215,10 +1217,11 @@
         });
         return;
       }
-      // 서버가 상의·하의를 갖추지 못한 AI 응답을 거부한 경우(502).
-      // 사용자가 고칠 수 있는 것은 없으니, 다시 누를 길만 바로 옆에 둔다.
+      // 서버가 구성이 어긋난 AI 응답을 거부한 경우(502). 위에서 이미 한 번 더
+      // 불러 봤고 그래도 안 됐다. 사용자가 고칠 수 있는 것은 없으니 문구는
+      // 짧게 두고, 다시 누를 길만 바로 옆에 둔다.
       if (err.isApiError && (err.code === 'ai_invalid_response' || err.status === 502)) {
-        homeError('추천을 만들지 못했어요. 다시 시도해 주세요.', {
+        homeError('추천을 만들지 못했어요. 잠시 뒤 다시 시도해 주세요.', {
           label: '다시 시도', run: function () { $('#btn-recommend').click(); }
         });
         return;
@@ -1296,24 +1299,50 @@
   }
 
   /**
-   * 409 {error:"duplicate", retry:true} 는 "같은 요청을 다시 보내면 다른 조합이
-   * 나올 수 있다"는 뜻이다. 최대 3회, 1초 간격으로 자동 재시도한다.
-   * 3회 다 실패하면 더 시도해도 소용없다고 보고 사람에게 넘긴다.
+   * 다시 해 볼 만한 실패 두 가지를 서로 다른 정책으로 재시도한다.
+   *
+   *   409 duplicate       "같은 요청을 다시 보내면 다른 조합이 나올 수 있다".
+   *                       옷 수가 적을수록 자주 나므로 최대 3회, 1초 간격.
+   *   502 ai_invalid      서버가 AI 응답 구성을 검증해 되돌린 것이다
+   *                       (상의 1 · 하의 1 · 아우터 0~1 이 아님). 모델이 규격을
+   *                       어긴 우연이라 한 번 더 부르면 성공할 여지가 있다.
+   *                       다만 값이 드는 호출이므로 **딱 한 번만**.
+   *
+   * 두 카운터를 섞지 않는다. 섞으면 409 를 두 번 만난 뒤 502 가 왔을 때
+   * 남은 몫이 없어 다시 해 볼 만한 실패를 그냥 실패로 넘겨 버린다.
    */
+  var MAX_INVALID_RETRY = 1;
+
   function recommendWithRetry(situation, onRetry) {
-    function attempt(n) {
+    var dup = 0;
+    var invalid = 0;
+
+    function attempt() {
       return api.coordinations.recommend(situation).catch(function (err) {
-        if (!(err.isApiError && err.status === 409)) throw err;
-        if (n >= MAX_DUP_RETRY) {
-          var exhausted = new Error('duplicate_exhausted');
-          exhausted.code = 'duplicate_exhausted';
-          throw exhausted;
+        if (!err.isApiError) throw err;
+
+        if (err.status === 409) {
+          if (dup >= MAX_DUP_RETRY) {
+            var exhausted = new Error('duplicate_exhausted');
+            exhausted.code = 'duplicate_exhausted';
+            throw exhausted;
+          }
+          dup += 1;
+          onRetry({ kind: 'dup', n: dup, max: MAX_DUP_RETRY });
+          return sleep(1000).then(attempt);
         }
-        onRetry(n + 1);
-        return sleep(1000).then(function () { return attempt(n + 1); });
+
+        if (err.status === 502 || err.code === 'ai_invalid_response') {
+          if (invalid >= MAX_INVALID_RETRY) throw err;
+          invalid += 1;
+          onRetry({ kind: 'invalid', n: invalid, max: MAX_INVALID_RETRY });
+          return sleep(600).then(attempt);
+        }
+
+        throw err;
       });
     }
-    return attempt(0);
+    return attempt();
   }
 
   /* ================================================================
@@ -2339,9 +2368,9 @@
    * 사진 자체는 PATCH 로 바꿀 수 없으므로 사진 고르는 자리만 접는다.
    */
   /**
-   * 사진 분석 결과와 등록·수정 폼이 함께 쓰는 칸들.
-   * 백엔드가 만드는 중이라 서버가 아직 안 줄 수도 있고, 안 받을 수도 있다.
-   * 양쪽 다 값이 없으면 조용히 비워 두는 것으로 충분하다.
+   * 사진 분석 결과와 등록·수정 폼이 같은 이름으로 쓰는 칸들.
+   * `POST /api/clothes/analyze` 응답과 등록 요청의 필드명이 1:1 이라,
+   * 받은 것을 그대로 부으면 된다. 값이 없으면 조용히 비워 둔다.
    */
   var EXTRA_FIELDS = [
     { key: 'subCategory', sel: '#add-subcategory', label: '세부 분류' },
@@ -2350,6 +2379,37 @@
     { key: 'season',      sel: '#add-season',      label: '계절' }
   ];
 
+  /**
+   * 계절 칩.
+   *
+   * 실제로 쓰이는 값이 몇 개 안 되니 매번 타이핑하게 할 이유가 없다. 다만 칩은
+   * 지름길일 뿐 값의 울타리가 아니다 — 서버도 20자 이내면 무엇이든 받는다.
+   * 그래서 칩은 '고르는 것'이 아니라 '칸에 넣어 주는 것'이고, 눌린 표시는 칸의
+   * 내용을 읽어서 정한다. 직접 적은 말이 칩과 같으면 그 칩이 눌려 보인다.
+   */
+  var seasonInput = $('#add-season');
+
+  function syncSeasonChips() {
+    var value = seasonInput ? seasonInput.value.trim() : '';
+    $$('#add-season-chips [data-season]').forEach(function (chip) {
+      var on = chip.dataset.season === value;
+      chip.classList.toggle('is-active', on);
+      chip.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+  }
+
+  if (seasonInput) {
+    seasonInput.addEventListener('input', syncSeasonChips);
+    $('#add-season-chips').addEventListener('click', function (e) {
+      var chip = e.target.closest('[data-season]');
+      if (!chip) return;
+      // 눌린 칩을 한 번 더 누르면 비운다. 잘못 넣었을 때 지우는 길.
+      var same = seasonInput.value.trim() === chip.dataset.season;
+      seasonInput.value = same ? '' : chip.dataset.season;
+      syncSeasonChips();
+    });
+  }
+
   function openEditSheet(item) {
     state.editItemId = item.id;
     resetAddForm();
@@ -2357,6 +2417,7 @@
     $('#add-color').value = item.color || '';
     $('#add-detail').value = item.detail || '';
     EXTRA_FIELDS.forEach(function (f) { $(f.sel).value = item[f.key] || ''; });
+    syncSeasonChips();
     setCategory(CATEGORY[item.mainCategory] ? item.mainCategory : 'TOP');
     applySheetMode();
     openSheet(addSheet);
@@ -2392,6 +2453,7 @@
     setNote($('#add-error'), '');
     setNote($('#analyze-warn'), '');
     setCategory('TOP');
+    syncSeasonChips();   // form.reset() 은 칸만 비운다. 칩의 눌린 표시도 함께 푼다.
     setAnalyzing(false);
   }
 
@@ -2520,6 +2582,7 @@
             var v = result[f.key];
             if (v && !$(f.sel).value) $(f.sel).value = String(v);
           });
+          syncSeasonChips();
           analyzeNotice('사진을 읽어 자동으로 채웠어요. 확인하고 고쳐 주세요.', 'ok');
         }
       })

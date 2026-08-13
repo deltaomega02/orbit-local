@@ -1112,6 +1112,10 @@ input:focus-visible, textarea:focus-visible { outline: 2px solid var(--ink); out
 
 /* 시트 안의 짧은 입력칸들. 좁은 폭에서는 한 줄에 하나, 넓어지면 두 개씩. */
 .formgrid { display: grid; gap: var(--s4); }
+/* 칩을 이고 있는 칸은 반 칸에 들어가면 칩이 서너 줄로 접힌다. */
+.formgrid .field--wide { grid-column: 1 / -1; }
+/* 입력칸 위의 빠른 선택. 주인공은 칸이므로 칩을 한 단계 작게 둔다. */
+.chips--field .chip { min-height: 34px; padding: var(--s1) var(--s3); }
 
 /* 본문 텍스트는 화면이 넓어져도 읽기 좋은 줄 길이를 넘지 않는다. */
 .prose, .sheet__desc, .panel__desc, .steps, .empty__desc, .auth__lede { max-width: var(--measure); }
