@@ -296,10 +296,69 @@
     item:    { el: '#view-item',    root: false, title: '옷' }
   };
 
-  var stack = [{ name: 'home', params: {} }];
-  var suppressHistory = false;
+  var stack = [{ name: 'home', params: {}, scroll: 0 }];
 
   function current() { return stack[stack.length - 1]; }
+
+  /**
+   * 주소가 지금 보고 있는 화면을 그대로 담는다.
+   * 예전에는 URL 이 늘 `/` 여서 코디 상세를 보다 새로고침하면 홈으로 튕겼다.
+   * 해시 라우팅이라 서버 라우팅 설정 없이 새로고침·즐겨찾기·공유가 다 산다.
+   */
+  function hashOf(route) {
+    switch (route.name) {
+      case 'closet':  return '#/closet';
+      case 'history': return '#/history';
+      case 'more':    return '#/more';
+      case 'coord':   return '#/look/' + encodeURIComponent(route.params.id);
+      case 'item':    return '#/item/' + encodeURIComponent(route.params.id);
+      default:        return '#/';
+    }
+  }
+
+  /** 모르는 주소는 null. 부르는 쪽이 홈으로 되돌린다. */
+  function parseHash(hash) {
+    var seg = String(hash || '').replace(/^#\/?/, '').split('/').filter(Boolean);
+    if (!seg.length) return { name: 'home', params: {} };
+    if (seg[0] === 'look' && seg[1]) return { name: 'coord', params: { id: decodeURIComponent(seg[1]) } };
+    if (seg[0] === 'item' && seg[1]) return { name: 'item', params: { id: decodeURIComponent(seg[1]) } };
+    if (VIEWS[seg[0]] && VIEWS[seg[0]].root) return { name: seg[0], params: {} };
+    return null;
+  }
+
+  function sameRoute(a, b) {
+    return !!a && !!b && a.name === b.name &&
+      String((a.params || {}).id || '') === String((b.params || {}).id || '');
+  }
+
+  /** 주소로 곧장 들어온 상세 화면도 뒤로가면 홈으로 나갈 수 있어야 한다. */
+  function stackFor(target) {
+    var route = { name: target.name, params: target.params || {}, scroll: 0 };
+    if (VIEWS[route.name].root) return [route];
+    return [{ name: 'home', params: {}, scroll: 0 }, route];
+  }
+
+  /**
+   * 우리가 이 문서 안에서 몇 번째 기록에 있는지.
+   * 0 이면 "이 앱이 만든 앞 기록이 없다" — 주소로 상세 화면에 곧장 들어온 경우다.
+   * 이때 history.back() 을 부르면 앱 밖으로 나가 버리므로 뒤로가기를 직접 처리한다.
+   */
+  var histIndex = 0;
+  var histSeq = 0;
+
+  /** 지금 스택을 주소창에 반영한다. 같은 주소면 기록을 새로 쌓지 않는다. */
+  function syncUrl(replace) {
+    if (!window.history || !window.history.pushState) return;
+    var h = hashOf(current());
+    try {
+      if (replace || window.location.hash === h) {
+        window.history.replaceState({ idx: histIndex, depth: stack.length }, '', h);
+      } else {
+        histIndex = ++histSeq;
+        window.history.pushState({ idx: histIndex, depth: stack.length }, '', h);
+      }
+    } catch (e) { /* noop */ }
+  }
 
   function navigate(name, params, opts) {
     opts = opts || {};
@@ -312,36 +371,46 @@
       stack.push(route);
     }
 
-    if (!opts.fromHistory && window.history && window.history.pushState) {
-      try { window.history.pushState({ depth: stack.length }, ''); } catch (e) { /* noop */ }
-    }
+    if (!opts.fromHistory) syncUrl(opts.replaceUrl);
     applyRoute(opts);
   }
 
   function back() {
-    if (stack.length <= 1) {
-      if (current().name !== 'home') navigate('home');
-      return;
-    }
-    stack.pop();
-    if (window.history && window.history.back) {
-      suppressHistory = true;
+    // 앱이 쌓은 기록이 있으면 브라우저에 맡긴다 (popstate 가 스택을 맞춘다).
+    if (histIndex > 0 && window.history && window.history.back) {
       window.history.back();
-      return; // popstate 가 applyRoute 를 부른다
-    }
-    applyRoute({ restoreScroll: true });
-  }
-
-  window.addEventListener('popstate', function () {
-    if (suppressHistory) {
-      suppressHistory = false;
-      applyRoute({ restoreScroll: true });
       return;
     }
+    // 주소로 상세 화면에 곧장 들어온 경우. 브라우저 기록을 건드리면 앱 밖으로
+    // 나가 버리므로, 스택만 한 칸 내리고 주소를 덮어쓴다.
     if (stack.length > 1) {
       stack.pop();
+      syncUrl(true);
       applyRoute({ restoreScroll: true });
+      return;
     }
+    if (current().name !== 'home') navigate('home');
+  }
+
+  /**
+   * 뒤로·앞으로·주소 직접 수정을 모두 여기서 받는다.
+   * 스택을 무조건 pop 하지 않고 "주소가 가리키는 화면"에 스택을 맞춘다.
+   * 그래야 앞으로가기와 주소 직접 입력에서도 화면과 URL 이 어긋나지 않는다.
+   */
+  window.addEventListener('popstate', function () {
+    var st = window.history.state;
+    histIndex = (st && typeof st.idx === 'number') ? st.idx : 0;
+
+    var target = parseHash(window.location.hash);
+    if (!target) { syncUrl(true); return; }
+
+    var idx = -1;
+    for (var i = stack.length - 1; i >= 0; i--) {
+      if (sameRoute(stack[i], target)) { idx = i; break; }
+    }
+    stack = (idx >= 0) ? stack.slice(0, idx + 1) : stackFor(target);
+
+    applyRoute({ restoreScroll: true, fromHistory: true });
   });
 
   function applyRoute(opts) {
@@ -423,7 +492,7 @@
     state.coord = { id: null, data: null };
     state.item = { id: null, data: null, usedIn: [], usedInUnavailable: false };
     moreLoaded = false;
-    stack = [{ name: 'home', params: {} }];
+    stack = [{ name: 'home', params: {}, scroll: 0 }];
     releaseLocalPreviews();
   }
 
@@ -431,7 +500,9 @@
     show($('#screen-auth'), false);
     show($('#app-shell'), true);
     show($('#boot'), false);
-    stack = [{ name: 'home', params: {} }];
+    // 주소가 가리키는 화면에서 시작한다. 새로고침해도 보던 자리로 돌아온다.
+    stack = stackFor(parseHash(window.location.hash) || { name: 'home', params: {} });
+    syncUrl(true);
     applyRoute();
     loadAiState();
   }
@@ -678,6 +749,33 @@
 
   /* ---------------- 추천받기 (409 자동 재시도) ---------------- */
   var MAX_DUP_RETRY = 3;
+  /** 이보다 오래 걸리면 "왜 안 끝나는지" 를 한 줄 더 말해 준다. */
+  var SLOW_HINT_MS = 6000;
+
+  var recSlowTimer = null;
+  var recAttempt = 0;
+
+  function recStatus(msg) {
+    $('#home-retry-msg').textContent = msg;
+    show($('#home-retry'), true);
+  }
+
+  function recArmSlowHint() {
+    clearTimeout(recSlowTimer);
+    recSlowTimer = setTimeout(function () {
+      recStatus(recAttempt
+        ? '다른 조합을 찾는 중… (' + recAttempt + '/' + MAX_DUP_RETRY + ') ' +
+          '생각보다 오래 걸리고 있어요. 조금만 더 기다려 주세요.'
+        : '오늘의 조합을 고르는 중이에요. 생각보다 오래 걸리고 있어요. 조금만 더 기다려 주세요.');
+    }, SLOW_HINT_MS);
+  }
+
+  function recStop() {
+    clearTimeout(recSlowTimer);
+    recSlowTimer = null;
+    recAttempt = 0;
+    show($('#home-retry'), false);
+  }
 
   $('#btn-recommend').addEventListener('click', function () {
     if (!requireAi()) return;
@@ -686,13 +784,18 @@
     var done = busy(btn, '고르는 중…');
     setNote($('#home-error'), '', $('#home-error-msg'));
     show($('#home-error-action'), false);
-    show($('#home-retry'), false);
+    recStop();
+    recArmSlowHint();
 
     recommendWithRetry(function (attempt) {
-      $('#home-retry-msg').textContent = '다른 조합을 찾는 중… (' + attempt + '/' + MAX_DUP_RETRY + ')';
-      show($('#home-retry'), true);
+      // 서버가 409(이미 입은 조합)를 주면 클라이언트가 같은 요청을 다시 보낸다.
+      // 그동안 버튼이 "고르는 중…" 에 머물러 있으면 사용자는 그냥 느린 줄 안다.
+      // 무엇을 다시 하고 있는지, 몇 번째인지를 밖으로 꺼낸다.
+      recAttempt = attempt;
+      recStatus('같은 조합이 나와서 다른 조합을 찾는 중… (' + attempt + '/' + MAX_DUP_RETRY + ')');
+      recArmSlowHint();
     }).then(function (created) {
-      show($('#home-retry'), false);
+      recStop();
       state.history.loaded = false;
       // 서버가 오늘 목록의 주인이다. 로컬에서 합치지 않고 다시 읽는다.
       return loadHome().then(function () {
@@ -700,7 +803,7 @@
         if (created && created.id) openCoord(created.id, created.title);
       });
     }).catch(function (err) {
-      show($('#home-retry'), false);
+      recStop();
       if (isExpired(err)) return;
 
       if (err && err.code === 'duplicate_exhausted') {
