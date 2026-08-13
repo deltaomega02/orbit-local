@@ -21,10 +21,30 @@
   --danger:       #A3402F;
   --danger-soft:  #F7EAE7;
 
-  /* --- 타이포 --------------------------------------------- */
-  --font: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont,
-          "Apple SD Gothic Neo", "Segoe UI", "Malgun Gothic", "맑은 고딕", sans-serif;
+  /* --- 타이포 ---------------------------------------------
+     일본어 시스템 폰트를 앞에 세운다. 웹폰트 CDN 은 쓸 수 없으므로
+     "그 컴퓨터에 이미 있는 것" 만으로 짜야 한다.
+       macOS   Hiragino Sans (Hiragino Kaku Gothic ProN 은 구형 대비)
+       Windows Yu Gothic UI · Meiryo
+     한글 폰트를 앞에 두면 일본어에서 한자 자형이 한국식으로 나오거나
+     가나가 대체 폰트로 튀어 줄마다 높이가 달라진다.
+
+     웨이트는 여전히 400 과 700 **둘뿐이다.** 유고딕도 맑은 고딕과 사정이 같아,
+     300·500·600 을 쓰면 윈도우에서 전부 400 으로 뭉개진다. */
+  --font: "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Yu Gothic UI",
+          "Yu Gothic", YuGothic, Meiryo, "Noto Sans JP",
+          -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --font-num: "SF Mono", "Consolas", ui-monospace, monospace;
+
+  /* --- 자간 (일본어 기준) ---------------------------------
+     DESIGN.md 는 한글을 한 덩어리로 읽히게 하려고 -0.03em 까지 조였다.
+     일본어는 사정이 다르다. 가나·한자는 전각 칸 안에 이미 여백을 품고 있어서
+     같은 만큼 조이면 글자끼리 붙어 버리고, 획이 많은 한자가 먼저 뭉개진다.
+     그래서 본문은 0 으로 풀고, 큰 제목에서만 전각이 만드는 헐렁함을 살짝 다듬는다.
+     인덱스 라벨(.14em)과 번호(.06em)는 영문·숫자라 그대로 둔다. */
+  --tr-title: -.01em;    /* 30px 화면 제목 */
+  --tr-head:  -.005em;   /* 20 · 17px 제목 */
+  --tr-body:  0;         /* 본문 · 버튼 · 라벨 */
 
   /* --- 간격 ----------------------------------------------- */
   --s1: 4px;  --s2: 8px;   --s3: 12px;  --s4: 16px;
@@ -63,9 +83,12 @@
   --gutter: var(--s5);
   --tabbar-h: 60px;
   --nav-w: 232px;
-  /* 본문 텍스트의 최대 줄 길이. 15px 한글 기준 대략 42자.
-     화면이 넓어져도 문장은 이 폭을 넘지 않는다 — 눈이 줄을 놓친다. */
-  --measure: 640px;
+  /* 본문 텍스트의 최대 줄 길이.
+     한글 기준 640px 는 15px 로 약 42자였다. 일본어는 가나·한자가 전부 전각이라
+     같은 640px 가 그대로 42자가 되는데, 띄어쓰기가 없어 눈이 쉴 자리가 없는
+     일본어에서 42자는 길다. 조판에서 흔히 잡는 한 줄은 30~40자다.
+     15px × 37자 ≈ 560px 로 줄인다. */
+  --measure: 560px;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -110,14 +133,25 @@ body {
   font-family: var(--font);
   font-size: 15px;
   font-weight: 400;
-  line-height: 1.65;
-  letter-spacing: -.01em;
+  /* 일본어는 글자가 촘촘해 줄 사이가 좁으면 줄을 놓친다. 한글 기준 1.65 에서
+     한 칸 올린다(일본어 조판에서 흔히 쓰는 1.7~1.9 의 아래쪽). */
+  line-height: 1.75;
+  letter-spacing: var(--tr-body);
   -webkit-font-smoothing: antialiased;
-  word-break: keep-all;
+
+  /* 줄바꿈 — 언어가 바뀌면 규칙 자체가 바뀌는 자리다.
+     `keep-all` 은 한국어 규칙이다(어절을 쪼개지 마라). 띄어쓰기가 없는
+     일본어에 그대로 두면 한 문장이 통째로 한 어절이 되어 상자를 뚫고 나간다.
+     일본어는 어디서든 끊되 끊으면 안 되는 자리만 지키면 된다 — 그게 금칙(禁則)이고
+     `line-break: strict` 가 그 엄격한 쪽이다. 행두에 、。 나 작은 가나(っ ゃ)가
+     오지 않는다. 긴 영문·URL 만 마지막 수단으로 쪼갠다. */
+  word-break: normal;
+  line-break: strict;
+  overflow-wrap: break-word;
   text-wrap: pretty;
 }
 
-h1, h2, h3 { margin: 0; font-weight: 700; line-height: 1.3; text-wrap: balance; }
+h1, h2, h3 { margin: 0; font-weight: 700; line-height: 1.4; text-wrap: balance; }
 p { margin: 0; }
 ol, ul { margin: 0; padding: 0; list-style: none; }
 img { max-width: 100%; display: block; }
@@ -187,7 +221,7 @@ button:disabled { cursor: not-allowed; }
   font-variant-numeric: tabular-nums;
 }
 
-.prose { font-size: 15px; line-height: 1.65; color: var(--ink-soft); }
+.prose { font-size: 15px; line-height: 1.75; color: var(--ink-soft); }
 
 .wordmark {
   font-size: 20px;
@@ -217,7 +251,7 @@ button:disabled { cursor: not-allowed; }
   font: inherit;
   font-weight: 700;
   font-size: 15px;
-  letter-spacing: -.01em;
+  letter-spacing: var(--tr-body);
   padding: var(--s3) var(--s5);
   border-radius: var(--r-btn);
   cursor: pointer;
@@ -310,7 +344,7 @@ input[type="text"], input[type="email"], input[type="password"], textarea {
   min-height: 48px;
   transition: border-color var(--base) var(--ease);
 }
-textarea { resize: vertical; line-height: 1.65; }
+textarea { resize: vertical; line-height: 1.75; }
 input:focus, textarea:focus { outline: none; border-color: var(--ink); }
 input:focus-visible, textarea:focus-visible { outline: 2px solid var(--ink); outline-offset: 1px; }
 ::placeholder { color: var(--ink-faint); }
@@ -453,7 +487,7 @@ input:focus-visible, textarea:focus-visible { outline: 2px solid var(--ink); out
 .brandmark { grid-column: 2; text-align: center; }
 .topbar__title {
   grid-column: 2;
-  font-size: 17px; font-weight: 700; letter-spacing: -.02em;
+  font-size: 17px; font-weight: 700; letter-spacing: var(--tr-head);
   text-align: center;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
@@ -509,7 +543,7 @@ input:focus-visible, textarea:focus-visible { outline: 2px solid var(--ink); out
   gap: var(--s4);
   margin-top: var(--s2);
 }
-.pagehead__title { font-size: 30px; letter-spacing: -.03em; }
+.pagehead__title { font-size: 30px; letter-spacing: var(--tr-title); }
 .pagehead .num { margin-top: var(--s2); display: block; }
 
 .block { margin-bottom: var(--s7); }
@@ -518,7 +552,7 @@ input:focus-visible, textarea:focus-visible { outline: 2px solid var(--ink); out
    숫자만 따로 떠 있는 것처럼 보인다. */
 .block--tight { margin-bottom: var(--s5); }
 .block__head { display: flex; align-items: center; justify-content: space-between; gap: var(--s4); }
-.block__title { font-size: 20px; letter-spacing: -.02em; margin-top: var(--s1); margin-bottom: var(--s5); }
+.block__title { font-size: 20px; letter-spacing: var(--tr-head); margin-top: var(--s1); margin-bottom: var(--s5); }
 
 /* 필터줄과 그 아래 목록 사이의 숨. 붙어 있으면 목록이 필터에 딸려 보인다. */
 .view > .chips { margin-bottom: var(--s5); }
@@ -654,7 +688,7 @@ input:focus-visible, textarea:focus-visible { outline: 2px solid var(--ink); out
   margin-bottom: var(--s3);
 }
 .look__title {
-  font-size: 17px; font-weight: 700; letter-spacing: -.02em;
+  font-size: 17px; font-weight: 700; letter-spacing: var(--tr-head);
   margin-top: var(--s4);
 }
 .look__items {
@@ -700,7 +734,7 @@ input:focus-visible, textarea:focus-visible { outline: 2px solid var(--ink); out
 .minilook__no { display: block; margin-top: var(--s2); }
 .minilook__title {
   display: block;
-  font-size: 13px; font-weight: 700; letter-spacing: -.02em;
+  font-size: 13px; font-weight: 700; letter-spacing: var(--tr-head);
   margin-top: var(--s1);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
@@ -721,7 +755,7 @@ input:focus-visible, textarea:focus-visible { outline: 2px solid var(--ink); out
 }
 .itemcard__name {
   display: block;
-  font-size: 15px; font-weight: 700; letter-spacing: -.02em;
+  font-size: 15px; font-weight: 700; letter-spacing: var(--tr-head);
   margin-top: var(--s3);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
@@ -753,7 +787,7 @@ input:focus-visible, textarea:focus-visible { outline: 2px solid var(--ink); out
 .action:active:not(:disabled) { transform: scale(.98); }
 .action:disabled { opacity: .55; cursor: progress; }
 .action__icon { display: grid; place-items: center; }
-.action__title { display: block; font-size: 17px; font-weight: 700; letter-spacing: -.02em; }
+.action__title { display: block; font-size: 17px; font-weight: 700; letter-spacing: var(--tr-head); }
 .action__sub { display: block; font-size: 13px; color: var(--ink-soft); margin-top: 2px; }
 .action__tail { color: var(--ink-faint); display: grid; place-items: center; }
 .action.is-busy .action__tail { display: none; }
@@ -764,7 +798,7 @@ input:focus-visible, textarea:focus-visible { outline: 2px solid var(--ink); out
    ------------------------------------------------------------ */
 .detail__media { position: relative; }
 .detail__head { margin-top: var(--s5); }
-.detail__title { font-size: 30px; letter-spacing: -.03em; margin-top: var(--s2); }
+.detail__title { font-size: 30px; letter-spacing: var(--tr-title); margin-top: var(--s2); }
 .detail__foot { margin-top: var(--s8); }
 
 .specrows { border-top: 1px solid var(--rule); margin-top: var(--s4); }
@@ -786,7 +820,7 @@ input:focus-visible, textarea:focus-visible { outline: 2px solid var(--ink); out
   color: var(--ink-faint);
 }
 .specrow__value {
-  font-size: 17px; font-weight: 700; letter-spacing: -.02em;
+  font-size: 17px; font-weight: 700; letter-spacing: var(--tr-head);
   font-variant-numeric: tabular-nums;
   min-width: 0;
 }
@@ -858,7 +892,7 @@ input:focus-visible, textarea:focus-visible { outline: 2px solid var(--ink); out
   margin-bottom: var(--s7);
   transition: border-color var(--base) var(--ease);
 }
-.panel__title { font-size: 20px; letter-spacing: -.02em; margin-top: var(--s2); }
+.panel__title { font-size: 20px; letter-spacing: var(--tr-head); margin-top: var(--s2); }
 .panel__desc { font-size: 13px; color: var(--ink-soft); margin-top: var(--s2); }
 .panel__body { display: grid; gap: var(--s4); margin-top: var(--s5); }
 .panel.is-highlight { border-color: var(--ink); }
@@ -940,7 +974,7 @@ input:focus-visible, textarea:focus-visible { outline: 2px solid var(--ink); out
 /* 화면 전체가 비었을 때는 크게 숨을 주지만, 화면 일부가 비었을 때까지
    같은 여백을 주면 그 자리만 뻥 뚫려 보인다. */
 .empty--inline { padding: var(--s7) var(--s4); }
-.empty__title { font-size: 20px; letter-spacing: -.02em; }
+.empty__title { font-size: 20px; letter-spacing: var(--tr-head); }
 .empty__desc { font-size: 15px; color: var(--ink-soft); max-width: 30ch; }
 .empty .btn { margin-top: var(--s4); }
 
@@ -991,7 +1025,7 @@ input:focus-visible, textarea:focus-visible { outline: 2px solid var(--ink); out
 }
 .sheet__closeform { margin: 0; }
 .sheet__close { position: absolute; top: var(--s3); right: var(--s3); color: var(--ink-soft); }
-.sheet__title { font-size: 20px; letter-spacing: -.02em; margin-top: var(--s2); }
+.sheet__title { font-size: 20px; letter-spacing: var(--tr-head); margin-top: var(--s2); }
 .sheet__desc { font-size: 15px; color: var(--ink-soft); margin: var(--s3) 0 var(--s5); }
 .sheet__actions {
   display: grid; grid-template-columns: 1fr 1.4fr; gap: var(--s2);
@@ -1022,7 +1056,7 @@ input:focus-visible, textarea:focus-visible { outline: 2px solid var(--ink); out
 .tabbar__label {
   font-size: 10px;
   font-weight: 700;
-  letter-spacing: -0.01em;
+  letter-spacing: var(--tr-body);
   line-height: 1;
   color: var(--ink-faint);
   transition: color var(--fast) var(--ease);
@@ -1058,7 +1092,7 @@ input:focus-visible, textarea:focus-visible { outline: 2px solid var(--ink); out
    ------------------------------------------------------------ */
 .situation { min-width: 0; }
 .situation__title {
-  font-size: 17px; font-weight: 700; letter-spacing: -.02em;
+  font-size: 17px; font-weight: 700; letter-spacing: var(--tr-head);
   margin-top: var(--s2);
   display: flex; align-items: center; gap: var(--s2); flex-wrap: wrap;
 }

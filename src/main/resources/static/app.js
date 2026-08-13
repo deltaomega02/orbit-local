@@ -989,7 +989,9 @@
       var at = parts.indexOf(word);
       if (at >= 0) parts.splice(at, 1);
       else parts.push(word);
-      setSituation(parts.join(', '));
+      // 이어 붙일 때도 읽점을 쓴다. 일본어 문장에 반각 쉼표가 섞이면
+      // 그 자리만 남의 글씨처럼 뜬다(「出勤, 雨の日」 vs 「出勤、雨の日」).
+      setSituation(parts.join('、'));
       situationInput.focus();
     });
 
