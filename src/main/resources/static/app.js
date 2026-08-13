@@ -122,6 +122,9 @@
       case 'network': return '서버에 연결할 수 없어요. Orbit 이 켜져 있는지 확인해 주세요.';
       case 'clothes_in_use': return '코디에 쓰인 옷이라 지금은 지울 수 없어요.';
       case 'invalid_key': return '키가 올바르지 않아요. 복사한 글자를 다시 확인해 주세요.';
+      // AI 가 상의·하의를 갖춘 조합을 내놓지 못한 경우. 서버가 걸러 낸 것이므로
+      // 사용자가 고칠 수 있는 것은 없다. 다시 해 보라고만 말한다.
+      case 'ai_invalid_response': return '추천을 만들지 못했어요. 다시 시도해 주세요.';
     }
     switch (err.status) {
       case 0: return '서버에 연결할 수 없어요. Orbit 이 켜져 있는지 확인해 주세요.';
@@ -130,6 +133,7 @@
       case 403: return '권한이 없어요.';
       case 404: return '찾을 수 없어요. 새로고침 후 다시 시도해 주세요.';
       case 413: return '사진 용량이 너무 커요. 10MB 이하로 올려 주세요.';
+      case 502: return '추천을 만들지 못했어요. 다시 시도해 주세요.';
       case 503: return 'AI 가 지금 응답하지 않아요. 잠시 후 다시 시도해 주세요.';
     }
     return '문제가 생겼어요. 잠시 후 다시 시도해 주세요.';
@@ -294,10 +298,20 @@
       'aria-label="즐겨찾기">' + icon(c.favorite ? 'heart-fill' : 'heart') + '</button>';
   }
 
+  /**
+   * 그날 적어 둔 한 줄. 서버가 이 필드를 아직 안 줄 수도 있으므로 없으면 빈 문자열.
+   * 코디는 아우터 없이 상의·하의만으로도 정상이라, 구성 옷 수는 여기서 따지지 않는다.
+   */
+  function situationOf(c) {
+    var s = c && c.situation;
+    return (typeof s === 'string' && s.trim()) ? s.trim() : '';
+  }
+
   /** LOOK 카드 — 이 앱의 얼굴 */
   function lookHtml(c) {
     var items = sortedItems(c);
     var title = c.title || '오늘의 코디';
+    var situation = situationOf(c);
     return '<article class="look" data-id="' + esc(c.id) + '">' +
       '<div class="look__head">' +
         '<span class="indexlabel">' + esc(lookLabel(c)) + '</span>' +
@@ -312,6 +326,8 @@
       '</div>' +
       '<h3 class="look__title">' + esc(title) + '</h3>' +
       '<p class="look__items">' + esc(items.map(function (i) { return i.name; }).join(' · ')) + '</p>' +
+      // 그때 무슨 일이 있어서 이 옷을 입었는지. 적어 두지 않았으면 줄 자체가 없다.
+      (situation ? '<p class="look__note">' + esc(situation) + '</p>' : '') +
       // 좁은 2열 카드에서는 머리의 날짜가 번호와 부딪힌다. 그때만 이 줄이 대신 나온다.
       '<p class="look__stamp num">' + esc(stampOf(c.createdAt)) + '</p>' +
     '</article>';
@@ -356,6 +372,12 @@
 
     /** '입어보기' → 전신 사진 등록으로 보낼 때, 돌아올 자리를 적어 둔다. */
     pendingTryOn: null,
+
+    /**
+     * 추천 직후 자동 생성이 못 끝난 이유. 코디 상세의 입어보기 자리에 그대로 실린다.
+     * { id, kind:'guide'|'error', message, action?, actionLabel? }
+     */
+    tryOnNote: null,
 
     addImage: null,
     analyzeAbort: null,
@@ -572,6 +594,7 @@
     state.item = { id: null, data: null, usedIn: [], usedInUnavailable: false };
     state.stats = { data: null, loaded: false };
     state.pendingTryOn = null;
+    state.tryOnNote = null;
     state.editItemId = null;
     moreLoaded = false;
     stack = [{ name: 'home', params: {}, scroll: 0 }];
@@ -765,9 +788,9 @@
     // 키를 바꾸려 눌렀을 뿐인데 앱 전체가 "AI 안 됨" 으로 바뀐다.
     var sub = $('#recommend-sub');
     if (sub) {
-      sub.textContent = (state.ai.checked && !state.ai.configured)
-        ? 'AI 연결을 마치면 바로 쓸 수 있어요'
-        : '옷장을 보고 오늘의 조합을 골라 드려요';
+      // 연결이 안 됐다는 사실이 우선이고, 그 외에는 '오늘 상황' 이 문구를 맡는다.
+      if (state.ai.checked && !state.ai.configured) sub.textContent = 'AI 연결을 마치면 바로 쓸 수 있어요';
+      else syncSituation();
     }
   }
 
@@ -960,6 +983,102 @@
   bindLookList($('#home-recent'));
   bindLookList($('#history-list'));
 
+  /* ---------------- 오늘 상황 ----------------
+   * 추천 버튼 바로 옆의 한 줄. 이번 추천에만 쓰이고 끝나면 비워진다.
+   * (설정의 '스타일 선호도' 는 늘 반영되는 취향이라 다른 물건이다.)
+   *
+   * 매일 여는 앱에서 매번 문장을 치게 하면 결국 아무도 안 쓴다. 그래서 칩을 먼저
+   * 두고, 칩으로 넣은 뒤에도 이어서 고칠 수 있게 입력칸을 함께 둔다.
+   * 비워 둔 채 버튼만 눌러도 지금까지처럼 곧장 돈다 — 관문이 아니다.
+   */
+  var LAST_SITUATION_KEY = 'orbit.situation.last';
+  var situationInput = $('#situation-input');
+
+  function situationValue() {
+    return situationInput ? situationInput.value.trim().slice(0, 100) : '';
+  }
+
+  /** 입력칸의 내용을 쉼표로 끊어 본 목록. 칩의 눌림 상태를 여기서 읽는다. */
+  function situationParts() {
+    return situationValue().split(',').map(function (s) { return s.trim(); })
+      .filter(function (s) { return s.length > 0; });
+  }
+
+  function syncSituation() {
+    var parts = situationParts();
+    var value = situationValue();
+    $$('#situation-chips [data-situation]').forEach(function (chip) {
+      var on = parts.indexOf(chip.dataset.situation) >= 0;
+      chip.classList.toggle('is-active', on);
+      chip.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+    var count = $('#situation-count');
+    if (count) count.textContent = String(value.length);
+    show($('#btn-situation-clear'), value.length > 0);
+
+    // 버튼이 무엇을 반영해서 고를지 스스로 말한다. 입력과 결과의 연결이 보여야 한다.
+    var sub = $('#recommend-sub');
+    if (sub && state.ai.checked && !state.ai.configured) return;
+    if (sub) {
+      sub.textContent = value
+        ? '‘' + value + '’ 을(를) 반영해서 골라 드려요'
+        : '옷장을 보고 오늘의 조합을 골라 드려요';
+    }
+  }
+
+  function setSituation(value) {
+    if (!situationInput) return;
+    situationInput.value = String(value || '').slice(0, 100);
+    syncSituation();
+  }
+
+  /** 지난번에 쓴 말은 기본값이 아니라 힌트다. placeholder 로만 흘려준다. */
+  function rememberSituation(value) {
+    try {
+      if (value) window.localStorage.setItem(LAST_SITUATION_KEY, value);
+      else window.localStorage.removeItem(LAST_SITUATION_KEY);
+    } catch (e) { /* 저장 못 해도 기능은 그대로다 */ }
+    applySituationHint();
+  }
+
+  function applySituationHint() {
+    if (!situationInput) return;
+    var last = null;
+    try { last = window.localStorage.getItem(LAST_SITUATION_KEY); } catch (e) { last = null; }
+    situationInput.placeholder = last ? '지난번엔 ‘' + last + '’' : '예) 비 오고 쌀쌀해';
+  }
+
+  if (situationInput) {
+    situationInput.addEventListener('input', syncSituation);
+    applySituationHint();
+    syncSituation();
+
+    $('#situation-chips').addEventListener('click', function (e) {
+      var chip = e.target.closest('[data-situation]');
+      if (!chip) return;
+      var word = chip.dataset.situation;
+      var parts = situationParts();
+      var at = parts.indexOf(word);
+      if (at >= 0) parts.splice(at, 1);
+      else parts.push(word);
+      setSituation(parts.join(', '));
+      situationInput.focus();
+    });
+
+    $('#btn-situation-clear').addEventListener('click', function () {
+      setSituation('');
+      situationInput.focus();
+    });
+
+    // 상황을 치다가 Enter 를 누르면 그대로 추천이 돌아야 한다. 폼이 아니므로 직접 잇는다.
+    situationInput.addEventListener('keydown', function (e) {
+      if (e.key !== 'Enter' || e.isComposing) return;
+      e.preventDefault();
+      var btn = $('#btn-recommend');
+      if (btn && !btn.disabled && !btn.hidden) btn.click();
+    });
+  }
+
   /* ---------------- 추천받기 (409 자동 재시도) ---------------- */
   var MAX_DUP_RETRY = 3;
   /** 이보다 오래 걸리면 "왜 안 끝나는지" 를 한 줄 더 말해 준다. */
@@ -995,11 +1114,33 @@
     }, SLOW_HINT_MS);
   }
 
+  /**
+   * 2단계 — 조합을 고른 뒤 그 조합을 입은 모습을 만드는 동안.
+   * 20~30초가 걸리므로 첫 단계보다 더 또렷한 진행 감각이 필요하다.
+   */
+  var REC_TRYON_STAGES = [
+    [0,  '입은 모습을 만드는 중…'],
+    [20, '전신 사진을 살펴보는 중…'],
+    [45, '옷을 하나씩 입혀 보는 중…'],
+    [72, '마무리하는 중… 조금만 기다려 주세요'],
+    [92, '거의 다 됐어요…']
+  ];
+
   function recStart() {
     recStop();
     show($('#home-progress'), true);
     recProgress = startProgress($('#home-progress-fill'), $('#home-progress-label'), REC_STAGES);
     recArmSlowHint();
+  }
+
+  function recStartTryOn() {
+    // 여기서부터는 오래 걸리는 게 정상이다. "느린가?" 힌트 대신 걸리는 시간을 미리 말한다.
+    clearTimeout(recSlowTimer);
+    recSlowTimer = null;
+    if (recProgress) recProgress.stop();
+    show($('#home-progress'), true);
+    recProgress = startProgress($('#home-progress-fill'), $('#home-progress-label'), REC_TRYON_STAGES);
+    recStatus('입은 모습을 만드는 데 20~30초쯤 걸려요.');
   }
 
   function recStop() {
@@ -1015,12 +1156,14 @@
     if (!requireAi()) return;
 
     var btn = this;
+    // 이번 호출에만 쓰이는 한 줄. 비어 있으면 서버로 아예 나가지 않는다.
+    var situation = situationValue();
     var done = busy(btn, '고르는 중…');
     setNote($('#home-error'), '', $('#home-error-msg'));
     show($('#home-error-action'), false);
     recStart();
 
-    recommendWithRetry(function (attempt) {
+    recommendWithRetry(situation, function (attempt) {
       // 서버가 409(이미 입은 조합)를 주면 클라이언트가 같은 요청을 다시 보낸다.
       // 그동안 버튼이 "고르는 중…" 에 머물러 있으면 사용자는 그냥 느린 줄 안다.
       // 무엇을 다시 하고 있는지, 몇 번째인지를 진행 바 문구로 꺼낸다.
@@ -1033,13 +1176,20 @@
       if (recProgress) recProgress.finish('골랐어요!');
       clearTimeout(recSlowTimer);
       show($('#home-retry'), false);
+      // 오늘 상황은 이번 한 번짜리다. 남겨 두면 다음 추천에 엉뚱하게 딸려 간다.
+      // 대신 방금 쓴 말을 placeholder 힌트로만 남긴다.
+      setSituation('');
+      rememberSituation(situation);
       state.history.loaded = false;
       state.stats.loaded = false;
-      // 서버가 오늘 목록의 주인이다. 로컬에서 합치지 않고 다시 읽는다.
-      return loadHome().then(function () {
-        recStop();
-        toast('오늘의 코디를 골랐어요.');
-        if (created && created.id) openCoord(created.id, created.title);
+      // 추천의 결과물은 조합이 아니라 "내가 그 옷을 입은 모습"이다. 이어서 만든다.
+      return autoTryOn(created).then(function (outcome) {
+        // 서버가 오늘 목록의 주인이다. 로컬에서 합치지 않고 다시 읽는다.
+        return loadHome().then(function () {
+          recStop();
+          toast(outcome.message);
+          if (created && created.id) openCoord(created.id, created.title);
+        });
       });
     }).catch(function (err) {
       recStop();
@@ -1065,9 +1215,72 @@
         });
         return;
       }
+      // 서버가 상의·하의를 갖추지 못한 AI 응답을 거부한 경우(502).
+      // 사용자가 고칠 수 있는 것은 없으니, 다시 누를 길만 바로 옆에 둔다.
+      if (err.isApiError && (err.code === 'ai_invalid_response' || err.status === 502)) {
+        homeError('추천을 만들지 못했어요. 다시 시도해 주세요.', {
+          label: '다시 시도', run: function () { $('#btn-recommend').click(); }
+        });
+        return;
+      }
       homeError(humanError(err));
     }).finally(done);
   });
+
+  /**
+   * 추천 직후 이어서 부르는 착용 이미지 생성.
+   *
+   * 왜 서버가 한 번에 묶지 않고 클라이언트가 두 번 부르는가 —
+   *   묶으면 추천 7초 + 생성 25초 = 30초가 넘는 단일 요청이 된다. 그 사이 무슨 일이
+   *   벌어지는지 보여 줄 방법이 없고, 이미지 단계에서 실패하면 애써 고른 조합까지
+   *   함께 날아간다. 두 번 부르면 (1) 단계별 진행 표시가 되고 (2) 이미지가 실패해도
+   *   추천은 남아서 '다시 만들기' 로 이어 갈 수 있다.
+   *
+   * 값이 드는 호출이라 실패해도 **자동으로 다시 부르지 않는다.** 사람이 누른다.
+   * 어떤 경우에도 reject 하지 않는다 — 이미지가 없다고 추천까지 실패로 만들지 않는다.
+   */
+  function autoTryOn(created) {
+    var id = created && created.id;
+    if (!id) return Promise.resolve({ message: '오늘의 코디를 골랐어요.' });
+
+    function guide() {
+      // 합성할 대상이 없다. 추천은 그대로 두고, 등록하고 돌아오는 길만 열어 준다.
+      state.tryOnNote = {
+        id: id, kind: 'guide',
+        message: '전신 사진을 등록하면 이 코디를 입은 모습을 만들어 드려요.',
+        action: 'go-body-photo', actionLabel: '전신 사진 등록하기'
+      };
+      return { message: '오늘의 코디를 골랐어요. 전신 사진을 등록하면 입은 모습도 만들어 드려요.' };
+    }
+    function failed(msg) {
+      state.tryOnNote = {
+        id: id, kind: 'error',
+        message: msg || '입은 모습을 만들지 못했어요. 아래 버튼으로 다시 만들 수 있어요.'
+      };
+      return { message: '오늘의 코디를 골랐어요. 입은 모습은 만들지 못했어요.' };
+    }
+
+    if (!(state.user && state.user.bodyPhotoUrl)) return Promise.resolve(guide());
+
+    recStartTryOn();
+    return api.coordinations.tryOn(id).then(function (res) {
+      var url = res && res.tryOnImageUrl;
+      if (!url) return failed();
+      state.tryOnNote = null;
+      if (state.coord.data && String(state.coord.data.id) === String(id)) {
+        state.coord.data.tryOnImageUrl = url;
+      }
+      if (recProgress) recProgress.finish('완성됐어요!');
+      return { message: '오늘의 코디와 입은 모습을 만들었어요.' };
+    }).catch(function (err) {
+      if (isExpired(err)) throw err;
+      if (err && err.isApiError && err.code === 'no_body_photo') return guide();
+      if (err && err.isApiError && err.status === 503) {
+        return failed('AI 가 지금 응답하지 않아 입은 모습을 만들지 못했어요. 잠시 후 다시 만들어 주세요.');
+      }
+      return failed();
+    });
+  }
 
   function homeError(msg, action) {
     setNote($('#home-error'), msg, $('#home-error-msg'));
@@ -1087,9 +1300,9 @@
    * 나올 수 있다"는 뜻이다. 최대 3회, 1초 간격으로 자동 재시도한다.
    * 3회 다 실패하면 더 시도해도 소용없다고 보고 사람에게 넘긴다.
    */
-  function recommendWithRetry(onRetry) {
+  function recommendWithRetry(situation, onRetry) {
     function attempt(n) {
-      return api.coordinations.recommend().catch(function (err) {
+      return api.coordinations.recommend(situation).catch(function (err) {
         if (!(err.isApiError && err.status === 409)) throw err;
         if (n >= MAX_DUP_RETRY) {
           var exhausted = new Error('duplicate_exhausted');
@@ -1250,10 +1463,16 @@
     if (!d) return;
     var c = catOf(d.mainCategory);
 
+    // subCategory·material·fit·season 은 백엔드가 만드는 중이라 아직 undefined 일 수
+    // 있다. 값이 없는 줄은 아예 그리지 않으므로 빈 라벨이 남지 않는다.
     var rows = [
       { label: 'Category', value: c.label },
+      { label: 'Type', value: d.subCategory },
       { label: 'Color', value: d.color },
-      { label: 'Fabric · Fit', value: d.detail },
+      { label: 'Material', value: d.material },
+      { label: 'Fit', value: d.fit },
+      { label: 'Season', value: d.season },
+      { label: 'Note', value: d.detail },
       { label: 'Added', value: d.createdAt ? dateOf(d.createdAt) : null }
     ].filter(function (r) { return r.value; });
 
@@ -1264,12 +1483,17 @@
           (state.item.usedInUnavailable ? '아직 정리된 코디가 없어요.' : '이 옷이 쓰인 코디가 아직 없어요.') +
         '</p></div>';
 
+    // 넓은 화면에서는 왼쪽 사진 / 오른쪽 정보로 갈라진다(.detail--split).
+    // 좁은 폭에서는 두 열이 그냥 위아래로 흐르므로 읽는 순서는 그대로다.
     $('#item-detail').innerHTML =
-      '<div class="detail">' +
-        // pill 은 AI 가 개입한 자리를 뜻한다. 바로 아래 인덱스 라벨이 같은 말을
-        // 이미 하고 있으므로 옷 사진에는 얹지 않는다.
-        '<div class="detail__media">' + itemFrameHtml(d, 'frame--item') + '</div>' +
+      '<div class="detail detail--split">' +
+        '<div class="detail__col detail__col--media">' +
+          // pill 은 AI 가 개입한 자리를 뜻한다. 바로 아래 인덱스 라벨이 같은 말을
+          // 이미 하고 있으므로 옷 사진에는 얹지 않는다.
+          '<div class="detail__media">' + itemFrameHtml(d, 'frame--item') + '</div>' +
+        '</div>' +
 
+        '<div class="detail__col detail__col--info">' +
         '<div class="detail__head">' +
           '<p class="indexlabel">' + esc(c.en) + '</p>' +
           '<h2 class="detail__title">' + esc(d.name) + '</h2>' +
@@ -1301,6 +1525,7 @@
               ? '이 옷은 코디 ' + usedIn.length + '건에 쓰였어요. 옷장에서는 사라지지만 지난 기록에는 그대로 남습니다.'
               : '이 옷을 옷장에서 지울까요?',
             'delete-item') + '</div>' +
+        '</div>' +
       '</div>';
 
     hydrateImages($('#item-detail'));
@@ -1354,6 +1579,33 @@
       show(ask, true);
       if (ask) ask.focus();
     }
+  });
+
+  /**
+   * Esc — 펼쳐 놓은 것을 접는다.
+   *
+   * 시트는 <dialog> 라 브라우저가 알아서 닫아 주지만, 화면 안에서 펼쳐지는 확인
+   * 패널(삭제·연결 해제·다시 만들기)은 취소 버튼을 눌러야만 닫혔다. 키보드로 쓰는
+   * 사람에게는 열려 있는 것은 Esc 로 닫히는 게 규칙이다.
+   */
+  function closeConfirmPanel(box) {
+    if (box.id === 'key-remove-confirm') {
+      showKeyRemoveConfirm(false);
+      $('#btn-key-ask-remove').focus();
+      return;
+    }
+    var ask = $('[data-action^="ask-"]', box.parentNode);
+    show(box, false);
+    if (ask) { show(ask, true); ask.focus(); }
+  }
+
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape' && e.key !== 'Esc') return;
+    if (addSheet.open || guideSheet.open) return;   // 시트는 스스로 닫힌다
+    var open = $$('.confirm').filter(function (box) { return !box.hidden; });
+    if (!open.length) return;
+    e.preventDefault();
+    open.forEach(closeConfirmPanel);
   });
 
   $('#item-detail').addEventListener('click', function (e) {
@@ -1610,7 +1862,21 @@
     // 사진이 없는 옷은 이름만으로 그려진다. 결과가 실제 옷과 달라지는 가장 큰 이유다.
     var noPhoto = items.filter(function (it) { return !it.imageUrl; });
 
+    // 추천 직후의 자동 생성이 못 끝났으면 그 이유가 여기에 실린다.
+    // 결과가 이미 있으면 지난 이야기이므로 보여 주지 않는다.
+    var note = (state.tryOnNote && String(state.tryOnNote.id) === String(c.id) && !hasResult)
+      ? state.tryOnNote : null;
+
     return '<div class="tryon" data-tryon>' +
+      (note
+        ? '<div class="note' + (note.kind === 'error' ? ' note--error' : '') + '" role="status">' +
+            '<span class="note__body">' + esc(note.message) + '</span>' +
+            (note.action
+              ? '<button class="btn btn--tiny btn--ghost" type="button" data-action="' + esc(note.action) + '">' +
+                  esc(note.actionLabel) + '</button>'
+              : '') +
+          '</div>'
+        : '') +
       (hasResult
         ? '<button class="btn btn--ghost btn--block" type="button" data-action="ask-tryon-again">' +
             icon('sparkle', 'ico--sm accent') +
@@ -1737,20 +2003,34 @@
     action.classList.toggle('is-on', !!c.favorite);
     action.innerHTML = icon(c.favorite ? 'heart-fill' : 'heart');
 
+    var situation = situationOf(c);
+
+    // 넓은 화면에서는 왼쪽 사진 / 오른쪽 정보. 좁은 폭에서는 위아래로 흐른다.
     $('#coord-detail').innerHTML =
-      '<div class="detail">' +
+      '<div class="detail detail--split">' +
+        '<div class="detail__col detail__col--media">' +
         '<div class="look__head">' +
           '<span class="indexlabel">' + esc(lookLabel(c)) + '</span>' +
           '<span class="num">' + esc(stampOf(c.createdAt)) + '</span>' +
         '</div>' +
 
         coordMediaHtml(c) +
-
+        // 입어보기는 사진에 하는 일이다. 넓은 화면에서도 사진 바로 밑에 둔다.
         tryOnBlockHtml(c, items) +
+        '</div>' +
 
+        '<div class="detail__col detail__col--info">' +
         '<div class="detail__head">' +
           '<h2 class="detail__title">' + esc(c.title || '오늘의 코디') + '</h2>' +
         '</div>' +
+
+        // 그날 적어 둔 한 줄. "그때 왜 이걸 입었지" 가 보여야 기록이 뜻을 가진다.
+        (situation
+          ? '<section class="section">' +
+              '<p class="sectionlabel">Today’s Context</p>' +
+              '<p class="situation-line">' + esc(situation) + '</p>' +
+            '</section>'
+          : '') +
 
         (c.reason
           ? '<section class="section">' +
@@ -1789,6 +2069,7 @@
         '</section>' +
 
         '<div class="detail__foot">' + deleteBlockHtml('이 코디를 기록에서 지울까요?', 'delete-coord') + '</div>' +
+        '</div>' +
       '</div>';
 
     hydrateImages($('#coord-detail'));
@@ -1940,6 +2221,7 @@
       // 마지막 프레임(100%)을 잠깐 보여 주고 결과로 바꾼다
       setTimeout(function () {
         if (url) {
+          state.tryOnNote = null;   // 손으로 다시 만들어 성공했다. 안내는 제 몫을 다했다.
           state.home.loaded = false;
           renderCoord();   // 블록이 통째로 다시 그려진다 → 버튼은 "다시 만들기" 가 된다
           toast('입어본 모습을 만들었어요.');
@@ -2056,12 +2338,25 @@
    * 사진을 고르면 자동으로 채워지는 그 폼이 곧 "AI 가 채운 것을 고치는 폼"이다.
    * 사진 자체는 PATCH 로 바꿀 수 없으므로 사진 고르는 자리만 접는다.
    */
+  /**
+   * 사진 분석 결과와 등록·수정 폼이 함께 쓰는 칸들.
+   * 백엔드가 만드는 중이라 서버가 아직 안 줄 수도 있고, 안 받을 수도 있다.
+   * 양쪽 다 값이 없으면 조용히 비워 두는 것으로 충분하다.
+   */
+  var EXTRA_FIELDS = [
+    { key: 'subCategory', sel: '#add-subcategory', label: '세부 분류' },
+    { key: 'material',    sel: '#add-material',    label: '소재' },
+    { key: 'fit',         sel: '#add-fit',         label: '핏' },
+    { key: 'season',      sel: '#add-season',      label: '계절' }
+  ];
+
   function openEditSheet(item) {
     state.editItemId = item.id;
     resetAddForm();
     $('#add-name').value = item.name || '';
     $('#add-color').value = item.color || '';
     $('#add-detail').value = item.detail || '';
+    EXTRA_FIELDS.forEach(function (f) { $(f.sel).value = item[f.key] || ''; });
     setCategory(CATEGORY[item.mainCategory] ? item.mainCategory : 'TOP');
     applySheetMode();
     openSheet(addSheet);
@@ -2220,6 +2515,11 @@
           if (result.mainCategory && CATEGORY[result.mainCategory]) setCategory(result.mainCategory);
           if (result.color && !$('#add-color').value) $('#add-color').value = result.color;
           if (result.detail && !$('#add-detail').value) $('#add-detail').value = result.detail;
+          // 서버가 아직 안 주는 항목은 그냥 빈칸으로 남는다. 직접 적으면 된다.
+          EXTRA_FIELDS.forEach(function (f) {
+            var v = result[f.key];
+            if (v && !$(f.sel).value) $(f.sel).value = String(v);
+          });
           analyzeNotice('사진을 읽어 자동으로 채웠어요. 확인하고 고쳐 주세요.', 'ok');
         }
       })
@@ -2255,17 +2555,29 @@
       return;
     }
 
+    var extras = {};
+    EXTRA_FIELDS.forEach(function (f) { extras[f.key] = $(f.sel).value.trim(); });
+
+    /** 서버가 아직 받지 않는 칸이 있으면 조용히 사라지게 두지 않고 이름을 대 준다. */
+    function droppedFields(saved) {
+      var lost = EXTRA_FIELDS.filter(function (f) {
+        return extras[f.key] && (saved[f.key] || '') !== extras[f.key];
+      }).map(function (f) { return f.label; });
+      if ((saved.detail || '') !== detail) lost.push('설명');
+      return lost;
+    }
+
     var done = busy($('#btn-add-submit'), '저장 중…');
 
     if (state.editItemId != null) {
       var editingId = state.editItemId;
-      api.clothes.update(editingId, {
+      api.clothes.update(editingId, Object.assign({
         name: name,
         mainCategory: currentCategory(),
         // PATCH 는 null 이 "변경 없음" 이므로, 비우려면 빈 문자열을 보내야 한다.
         color: color,
         detail: detail
-      }).then(function (updated) {
+      }, extras)).then(function (updated) {
         closeAddSheet();
         state.item.data = updated;
         state.closet.loaded = false;
@@ -2276,9 +2588,10 @@
           renderItem();
         }
         toast('‘' + updated.name + '’ 정보를 고쳤어요.');
-        // 서버가 아직 detail 을 받지 않는다면 조용히 사라지게 두지 않는다.
-        if ((updated.detail || '') !== detail) {
-          toast('소재 · 핏은 아직 저장되지 않아요. 나머지는 저장했어요.', 'error');
+        // 서버가 아직 받지 않는 항목이 있으면 무엇이 빠졌는지 이름을 대 준다.
+        var lost = droppedFields(updated);
+        if (lost.length) {
+          toast(lost.join(' · ') + '은(는) 아직 저장되지 않아요. 나머지는 저장했어요.', 'error');
         }
       }).catch(function (err) {
         if (isExpired(err)) return;
@@ -2289,13 +2602,13 @@
       return;
     }
 
-    api.clothes.create({
+    api.clothes.create(Object.assign({
       image: state.addImage,
       name: name,
       mainCategory: currentCategory(),
       color: color || null,
       detail: detail || null
-    }).then(function (created) {
+    }, extras)).then(function (created) {
       closeAddSheet();
       toast('‘' + created.name + '’ 을(를) 옷장에 담았어요.');
       state.home.loaded = false;
@@ -2472,6 +2785,8 @@
       setTimeout(function () { URL.revokeObjectURL(localUrl); }, 2000);
       state.user = state.user || {};
       state.user.bodyPhotoUrl = (res && res.bodyPhotoUrl) || previousUrl;
+      // "전신 사진을 등록하면…" 안내는 이제 할 말을 잃었다.
+      if (state.tryOnNote && state.tryOnNote.kind === 'guide') state.tryOnNote = null;
       renderBodyPhoto();
       toast(state.pendingTryOn
         ? '전신 사진을 저장했어요. 이제 입어보기로 돌아갈 수 있어요.'

@@ -305,13 +305,20 @@
         fd.append('image', file);
         return request('/api/clothes/analyze', { method: 'POST', form: fd, signal: signal });
       },
+      /**
+       * 옷 등록.
+       * subCategory·material·fit·season 은 백엔드가 만드는 중이다. 값이 있을 때만
+       * 실어 보낸다 — 서버가 아직 모르는 필드는 무시할 뿐이고, 빈 값을 보내
+       * 검증에 걸리는 일은 없어야 한다.
+       */
       create: function (data) {
         var fd = new FormData();
         if (data.image) fd.append('image', data.image);
         fd.append('name', data.name);
         fd.append('mainCategory', data.mainCategory);
-        if (data.color) fd.append('color', data.color);
-        if (data.detail) fd.append('detail', data.detail);
+        ['subCategory', 'color', 'material', 'fit', 'season', 'detail'].forEach(function (k) {
+          if (data[k]) fd.append(k, data[k]);
+        });
         return request('/api/clothes', { method: 'POST', form: fd });
       },
       update: function (id, patch) {
@@ -340,8 +347,16 @@
     },
 
     coordinations: {
-      recommend: function () {
-        return request('/api/coordinations/recommend', { method: 'POST', json: {} });
+      /**
+       * 오늘의 코디 추천.
+       * situation 은 "비 오고 쌀쌀해" 같은 이번 한 번짜리 한 줄이다. 선택 항목이라
+       * 비어 있으면 아예 실어 보내지 않는다 — 아직 이 필드를 모르는 서버에서도
+       * 지금까지와 똑같이 동작해야 한다.
+       */
+      recommend: function (situation) {
+        var body = {};
+        if (situation) body.situation = String(situation).slice(0, 100);
+        return request('/api/coordinations/recommend', { method: 'POST', json: body });
       },
       today: function () { return request('/api/coordinations/today'); },
       /** 전체 기록 최신순 (아직 없을 수 있다) */
