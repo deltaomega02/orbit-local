@@ -37,17 +37,25 @@ fun pngBytes(size: Int = 4): ByteArray {
 class FakeClothingAnalyzer : ClothingAnalyzer {
     var calls = 0
     var lastMime: String? = null
+
+    /**
+     * 실제로 넘어간 바이트. AI 로 보내기 전에 사진을 줄이는지는 **여기서만** 볼 수 있다 —
+     * 응답만 보면 4000px 원본을 그대로 실어 보내도 테스트는 초록색이다.
+     */
+    var lastImage: ByteArray? = null
     var result = defaultResult()
 
     override fun analyze(image: ByteArray, mime: String): ClothingAnalysis {
         calls++
         lastMime = mime
+        lastImage = image
         return result
     }
 
     fun reset() {
         calls = 0
         lastMime = null
+        lastImage = null
         result = defaultResult()
     }
 

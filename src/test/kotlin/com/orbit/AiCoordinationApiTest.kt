@@ -141,6 +141,32 @@ class AiCoordinationApiTest {
         assertEquals("image/png", analyzer.lastMime)
     }
 
+    /**
+     * AI 로 보내는 사진은 **저장본보다 더 줄인다.**
+     *
+     * 이 바이트는 base64 로 4/3 배 부풀어 그대로 요청 크기와 토큰 비용이 된다.
+     * 상한을 8MB 에서 40MB 로 연 지금 이 자리를 그냥 두면, 열어 준 만큼 AI 요금이
+     * 따라 오른다. 옷의 종류·색·소재를 읽는 데 1600px 가 필요하지는 않다.
+     *
+     * 응답만 보면 원본을 그대로 실어 보내도 테스트는 통과하므로, 가짜가 받은 바이트를
+     * 직접 디코드해서 본다.
+     */
+    @Test
+    fun `분석에 넘기는 사진은 저장본보다 더 작게 줄여서 보낸다`() {
+        mockMvc.perform(
+            multipart("/api/clothes/analyze")
+                .file(MockMultipartFile("image", "big.jpg", "image/jpeg", photoJpeg(4000, 3000)))
+                .header(HttpHeaders.AUTHORIZATION, me.bearer),
+        ).andExpect(status().isOk)
+
+        val sent = decodeImage(assertNotNull(analyzer.lastImage))
+        assertEquals(768, sent.width, "AI 전송본의 긴 변은 768px 이다")
+        assertEquals(576, sent.height, "비율이 유지되어야 한다")
+        // 줄이면서 다시 구웠으므로 형식도 바뀐다. 실제로 보낸 바이트와 mime 이 어긋나면
+        // 모델은 읽지 못하는 데이터를 받는다.
+        assertEquals("image/jpeg", analyzer.lastMime)
+    }
+
     @Test
     fun `분석도 이미지가 아니면 415 로 막는다`() {
         mockMvc.perform(

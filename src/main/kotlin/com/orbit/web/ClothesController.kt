@@ -3,6 +3,7 @@ package com.orbit.web
 import com.orbit.domain.Clothes
 import com.orbit.domain.ClothesLimits
 import com.orbit.domain.MainCategory
+import com.orbit.media.ImageNormalizer
 import com.orbit.media.MediaStorage
 import com.orbit.security.AuthenticatedUser
 import com.orbit.service.ClothesService
@@ -222,6 +223,7 @@ class ClothesController(
     private val coordinationService: CoordinationService,
     private val outfitAiService: OutfitAiService,
     private val mediaStorage: MediaStorage,
+    private val imageNormalizer: ImageNormalizer,
 ) {
 
     @PostMapping(consumes = [MediaType.APPLICATION_JSON_VALUE])
@@ -306,7 +308,17 @@ class ClothesController(
         // 저장하지 않더라도 크기·형식 검증은 똑같이 통과해야 한다. 검증을 건너뛰면
         // 이 엔드포인트가 "아무 바이트나 AI 에 그대로 넘기는 통로"가 된다.
         val type = mediaStorage.validate(image.bytes, image.contentType)
-        val analysis = outfitAiService.analyze(image.bytes, type.mime)
+        /*
+         * 저장 경로와 달리 여기는 디스크에 남기지 않지만, 줄여야 하는 이유는 오히려 더
+         * 분명하다 — 이 바이트는 base64 로 4/3 배 부풀어 그대로 요청 크기와 토큰 비용이
+         * 된다. 40MB 를 받게 된 지금 이 자리를 그냥 두면 상한을 올린 만큼 AI 요금이
+         * 따라 오른다. 기준(768px)이 저장본(1600px)과 다른 근거는 forAiPayload 주석에 있다.
+         *
+         * EXIF 회전도 여기서 같이 적용된다. 옆으로 누운 사진을 그대로 보내면 모델이
+         * 옷의 실루엣과 핏을 잘못 읽는다.
+         */
+        val payload = imageNormalizer.forAiPayload(image.bytes, type)
+        val analysis = outfitAiService.analyze(payload.bytes, payload.type.mime)
         return ClothesAnalysisResponse(
             name = analysis.name,
             mainCategory = analysis.mainCategory,
