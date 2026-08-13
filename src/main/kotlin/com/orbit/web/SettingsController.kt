@@ -24,7 +24,7 @@ data class GeminiKeyStatus(
 )
 
 data class GeminiKeyRequest(
-    @field:NotBlank(message = "키를 입력해 주세요")
+    @field:NotBlank(message = "キーを入力してください")
     val key: String = "",
 )
 
@@ -55,7 +55,7 @@ class SettingsController(
     @PutMapping
     fun save(@Validated @RequestBody request: GeminiKeyRequest): GeminiKeyStatus {
         val key = request.key.trim()
-        require(key.isNotBlank()) { "키를 입력해 주세요" }
+        require(key.isNotBlank()) { "キーを入力してください" }
 
         if (verifier.verify(key) == GeminiKeyVerifier.Result.INVALID) {
             throw InvalidGeminiKeyException()

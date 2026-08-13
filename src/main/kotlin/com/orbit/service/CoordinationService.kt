@@ -245,7 +245,7 @@ class CoordinationCreator(
         reason: String?,
         situation: String? = null,
     ): Coordination {
-        require(clothesIds.isNotEmpty()) { "clothesIds는 비어 있을 수 없습니다" }
+        require(clothesIds.isNotEmpty()) { "clothesIds を空にはできません" }
 
         val requested = clothesIds.toSet()
         // 옷장에서 치운 옷(소프트 삭제)으로는 새 코디를 만들 수 없다. 과거 기록에는

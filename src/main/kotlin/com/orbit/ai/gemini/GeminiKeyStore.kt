@@ -86,7 +86,7 @@ class GeminiKeyStore(
 
     fun save(key: String) {
         val normalized = key.trim()
-        require(normalized.isNotBlank()) { "키가 비어 있습니다" }
+        require(normalized.isNotBlank()) { "キーが空です" }
 
         val file = OrbitPaths.geminiKeyFile
         Files.createDirectories(file.parent)

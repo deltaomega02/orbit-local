@@ -30,15 +30,31 @@ import java.time.Instant
  * 등록·수정·분석 세 곳이 같은 필드 집합을 다룬다 — 한 곳에서만 빠져도 그 필드는
  * 사실상 읽기 전용이 된다.
  */
+/*
+ * 검증 메시지를 직접 적어 둔다.
+ *
+ * 비워 두면 Bean Validation 의 기본 문구가 나가는데, 그건 **JVM 의 로케일을 따라
+ * 언어가 바뀐다** — 같은 코드가 기기에 따라 한국어로도 영어로도 나간다. 화면이
+ * 이 문장을 그대로 띄우므로 언어가 실행 환경에 달려서는 안 된다.
+ * `{max}` 는 Bean Validation 이 채워 주는 자리라 상한을 두 곳에 적지 않아도 된다.
+ */
 data class CreateClothesRequest(
-    @field:NotBlank @field:Size(max = ClothesLimits.NAME) val name: String,
+    @field:NotBlank(message = "服の名前を入力してください")
+    @field:Size(max = ClothesLimits.NAME, message = "名前は{max}文字を超えられません")
+    val name: String,
     val mainCategory: MainCategory,
-    @field:Size(max = ClothesLimits.COLOR) val color: String? = null,
-    @field:Size(max = ClothesLimits.SUB_CATEGORY) val subCategory: String? = null,
-    @field:Size(max = ClothesLimits.MATERIAL) val material: String? = null,
-    @field:Size(max = ClothesLimits.FIT) val fit: String? = null,
-    @field:Size(max = ClothesLimits.SEASON) val season: String? = null,
-    @field:Size(max = ClothesLimits.DETAIL) val detail: String? = null,
+    @field:Size(max = ClothesLimits.COLOR, message = "色は{max}文字を超えられません")
+    val color: String? = null,
+    @field:Size(max = ClothesLimits.SUB_CATEGORY, message = "種類は{max}文字を超えられません")
+    val subCategory: String? = null,
+    @field:Size(max = ClothesLimits.MATERIAL, message = "素材は{max}文字を超えられません")
+    val material: String? = null,
+    @field:Size(max = ClothesLimits.FIT, message = "フィットは{max}文字を超えられません")
+    val fit: String? = null,
+    @field:Size(max = ClothesLimits.SEASON, message = "季節は{max}文字を超えられません")
+    val season: String? = null,
+    @field:Size(max = ClothesLimits.DETAIL, message = "ひとことは{max}文字を超えられません")
+    val detail: String? = null,
 ) {
     fun toTraits() = ClothesTraits(color, subCategory, material, fit, season, detail)
 }
@@ -51,14 +67,21 @@ data class CreateClothesRequest(
  * 그대로 남는다.
  */
 data class UpdateClothesRequest(
-    @field:Size(min = 1, max = ClothesLimits.NAME) val name: String? = null,
+    @field:Size(min = 1, max = ClothesLimits.NAME, message = "名前は1〜{max}文字にしてください")
+    val name: String? = null,
     val mainCategory: MainCategory? = null,
-    @field:Size(max = ClothesLimits.COLOR) val color: String? = null,
-    @field:Size(max = ClothesLimits.SUB_CATEGORY) val subCategory: String? = null,
-    @field:Size(max = ClothesLimits.MATERIAL) val material: String? = null,
-    @field:Size(max = ClothesLimits.FIT) val fit: String? = null,
-    @field:Size(max = ClothesLimits.SEASON) val season: String? = null,
-    @field:Size(max = ClothesLimits.DETAIL) val detail: String? = null,
+    @field:Size(max = ClothesLimits.COLOR, message = "色は{max}文字を超えられません")
+    val color: String? = null,
+    @field:Size(max = ClothesLimits.SUB_CATEGORY, message = "種類は{max}文字を超えられません")
+    val subCategory: String? = null,
+    @field:Size(max = ClothesLimits.MATERIAL, message = "素材は{max}文字を超えられません")
+    val material: String? = null,
+    @field:Size(max = ClothesLimits.FIT, message = "フィットは{max}文字を超えられません")
+    val fit: String? = null,
+    @field:Size(max = ClothesLimits.SEASON, message = "季節は{max}文字を超えられません")
+    val season: String? = null,
+    @field:Size(max = ClothesLimits.DETAIL, message = "ひとことは{max}文字を超えられません")
+    val detail: String? = null,
 ) {
     fun toTraits() = ClothesTraits(color, subCategory, material, fit, season, detail)
 }
@@ -239,7 +262,7 @@ class ClothesController(
          * 터진다(사용자에게는 500 으로 보인다). 넘치는 값은 서비스가 잘라내기도 하므로
          * 이 검사는 "조용히 잘리지 않고 400 으로 알려 준다"는 쪽에 가깝다.
          */
-        require(name.isNotBlank() && name.length <= ClothesLimits.NAME) { "name 은 1~${ClothesLimits.NAME}자여야 합니다" }
+        require(name.isNotBlank() && name.length <= ClothesLimits.NAME) { "name は1〜${ClothesLimits.NAME}文字にしてください" }
         requireMaxLength("color", color, ClothesLimits.COLOR)
         requireMaxLength("subCategory", subCategory, ClothesLimits.SUB_CATEGORY)
         requireMaxLength("material", material, ClothesLimits.MATERIAL)
@@ -259,8 +282,13 @@ class ClothesController(
         return ResponseEntity.status(HttpStatus.CREATED).body(ClothesResponse.from(created))
     }
 
+    /**
+     * 메시지가 일본어인 이유는 이 문자열이 그대로 응답의 `detail` 이 되기 때문이다
+     * ([ApiExceptionHandler.handleIllegalArgument]). 필드 이름은 화면이 어느 칸을
+     * 가리킬지 알아야 하므로 API 필드명 그대로 둔다.
+     */
     private fun requireMaxLength(field: String, value: String?, max: Int) {
-        require((value?.length ?: 0) <= max) { "$field 은(는) ${max}자를 넘을 수 없습니다" }
+        require((value?.length ?: 0) <= max) { "$field は${max}文字を超えられません" }
     }
 
     /**

@@ -80,6 +80,11 @@ class JwtAuthenticationFilter(
  * 인증/인가 실패 응답도 `{"error": ...}` 모양으로 통일한다. 시큐리티 필터에서 난
  * 예외는 `@RestControllerAdvice` 가 잡지 못하므로 여기서 직접 쓴다 —
  * 이걸 두지 않으면 401 만 서블릿 기본 HTML 로 나가서 클라이언트가 파싱에 실패한다.
+ *
+ * `detail` 이 일본어인 이유도 [com.orbit.web.ApiExceptionHandler] 와 같다. 이 응답만
+ * 다른 언어로 남으면, 화면은 "옷을 찾을 수 없습니다"는 일본어로 "인증이 필요합니다"는
+ * 한국어로 띄우게 된다. 자동 세션 덕분에 사용자가 이 문구를 볼 일은 드물지만,
+ * 드물게 보이는 문구일수록 그때 읽히지 않으면 곤란하다.
  */
 @Component
 class JsonAuthenticationErrorHandler(
@@ -90,13 +95,13 @@ class JsonAuthenticationErrorHandler(
         request: HttpServletRequest,
         response: HttpServletResponse,
         authException: org.springframework.security.core.AuthenticationException,
-    ) = write(response, HttpStatus.UNAUTHORIZED, "unauthorized", "인증이 필요합니다")
+    ) = write(response, HttpStatus.UNAUTHORIZED, "unauthorized", "認証が必要です")
 
     override fun handle(
         request: HttpServletRequest,
         response: HttpServletResponse,
         accessDeniedException: org.springframework.security.access.AccessDeniedException,
-    ) = write(response, HttpStatus.FORBIDDEN, "forbidden", "권한이 없습니다")
+    ) = write(response, HttpStatus.FORBIDDEN, "forbidden", "権限がありません")
 
     private fun write(response: HttpServletResponse, status: HttpStatus, error: String, detail: String) {
         response.status = status.value()

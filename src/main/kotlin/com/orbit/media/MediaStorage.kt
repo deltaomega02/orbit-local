@@ -104,7 +104,7 @@ class MediaStorage(
      * 검증을 [store] 안에 묻어 두지 않고 밖으로 꺼냈다.
      */
     fun validate(bytes: ByteArray, declaredContentType: String?): ImageType {
-        if (bytes.isEmpty()) throw IllegalArgumentException("빈 파일은 업로드할 수 없습니다")
+        if (bytes.isEmpty()) throw IllegalArgumentException("空のファイルはアップロードできません")
         if (bytes.size > properties.maxFileSize.toBytes()) {
             throw ImageTooLargeException(properties.maxFileSize.toBytes())
         }
@@ -156,9 +156,9 @@ class MediaStorage(
      * 가리키면 여기서 끊는다 — 검사를 호출부에 맡기면 언젠가 한 곳이 빠진다.
      */
     private fun resolve(relativePath: String): Path {
-        require(relativePath.isNotBlank()) { "경로가 비어 있습니다" }
+        require(relativePath.isNotBlank()) { "パスが空です" }
         val target = root.resolve(relativePath).normalize()
-        require(target.startsWith(root)) { "허용되지 않은 경로입니다" }
+        require(target.startsWith(root)) { "許可されていないパスです" }
         return target
     }
 }

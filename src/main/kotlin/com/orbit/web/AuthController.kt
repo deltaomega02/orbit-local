@@ -13,6 +13,15 @@ import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
 
+/*
+ * 아래 세 요청 DTO 만 검증 메시지를 일본어로 적지 않았다.
+ *
+ * 화면이 부르지 않는 경로이기 때문이다(가입·로그인은 자동 세션으로 대체됐다).
+ * 지금 이 메시지를 볼 수 있는 것은 curl 을 직접 치는 개발자뿐이고, 프레임워크
+ * 기본 문구로 충분하다. 화면에 로그인을 되살리는 날 [CreateClothesRequest] 처럼
+ * 문구를 직접 적어야 한다 — 기본 문구는 JVM 로케일을 따라가서 언어가 실행 환경에
+ * 달리기 때문이다.
+ */
 data class SignUpRequest(
     @field:Email @field:NotBlank val email: String,
     // 길이만 강제한다. 특수문자 조합 규칙은 사용자를 예측 가능한 패턴("Password1!")으로

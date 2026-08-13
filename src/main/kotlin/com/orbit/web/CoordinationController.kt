@@ -19,8 +19,10 @@ import org.springframework.web.bind.annotation.*
 import java.time.Instant
 
 data class CreateCoordinationRequest(
-    @field:NotBlank val title: String,
-    @field:NotEmpty val clothesIds: List<Long>,
+    // 메시지를 직접 적는 이유는 [CreateClothesRequest] 와 같다 — 기본 문구는
+    // JVM 로케일을 따라가서, 같은 코드가 기기에 따라 다른 언어로 나간다.
+    @field:NotBlank(message = "コーデの名前を入力してください") val title: String,
+    @field:NotEmpty(message = "服を1点以上選んでください") val clothesIds: List<Long>,
 )
 
 /**
@@ -41,7 +43,8 @@ data class RecommendCoordinationRequest(
      * 곧 토큰 비용이고, 100자를 넘겨 적을 만한 "오늘의 상황"은 사실 취향에 가깝다
      * (그건 `PUT /api/users/me/style-preference` 쪽 일이다).
      */
-    @field:Size(max = CoordinationLimits.SITUATION) val situation: String? = null,
+    @field:Size(max = CoordinationLimits.SITUATION, message = "今日の状況は{max}文字までです")
+    val situation: String? = null,
 )
 
 data class CoordinationItemResponse(
@@ -147,7 +150,7 @@ data class DuplicateResponse(
  * 둘을 한 코드로 뭉뚱그리면 클라이언트는 "재시도"만 알게 되고, 아무리 눌러도 결과가
  * 같은 상태에서 계속 누르게 된다(그게 실제로 벌어진 일이다 — 3번 호출, 40초).
  * `error` 값으로 구분하고, `retry: false` 를 함께 실어 **재시도 여부만 보는 클라이언트도
- * 틀리지 않게** 한다. `detail` 은 화면에 그대로 띄울 수 있는 한국어 한 문장이다.
+ * 틀리지 않게** 한다. `detail` 은 화면에 그대로 띄울 수 있는 일본어 한 문장이다.
  */
 data class ExhaustedResponse(
     val error: String = "exhausted",

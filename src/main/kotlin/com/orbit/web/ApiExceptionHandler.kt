@@ -23,6 +23,14 @@ import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
 import org.springframework.web.multipart.MaxUploadSizeExceededException
 
+/**
+ * 오류 응답. `error` 는 **클라이언트가 분기하는 코드**라 영어 소문자로 고정이고,
+ * `detail` 은 **사람이 읽는 문장**이라 일본어다.
+ *
+ * 둘을 나눠 두는 것이 여기서 값을 한다 — 문구를 다른 언어로 갈아도 화면의 분기
+ * 로직은 하나도 바뀌지 않는다. 반대로 `detail` 을 보고 분기하는 클라이언트가
+ * 있었다면 이 커밋이 그 화면을 통째로 깨뜨렸을 것이다.
+ */
 data class ErrorResponse(val error: String, val detail: String)
 
 /**
@@ -46,25 +54,25 @@ class ApiExceptionHandler {
     fun handleExhausted(e: CombinationsExhaustedException): ResponseEntity<ExhaustedResponse> =
         ResponseEntity.status(HttpStatus.CONFLICT).body(
             ExhaustedResponse(
-                detail = "오늘 만들 수 있는 조합 ${e.possible}가지를 모두 봤어요. " +
-                    "옷을 더 등록하면 새로운 조합이 나와요.",
+                detail = "今日つくれる組み合わせ${e.possible}通りをすべて見ました。" +
+                    "服を追加すると新しい組み合わせが出てきます。",
             ),
         )
 
     @ExceptionHandler(UnknownClothesException::class)
     fun handleUnknown(e: UnknownClothesException): ResponseEntity<ErrorResponse> =
         ResponseEntity.badRequest()
-            .body(ErrorResponse("unknown_clothes", "알 수 없는 의류 id: ${e.missingIds}"))
+            .body(ErrorResponse("unknown_clothes", "見つからない服のidがあります: ${e.missingIds}"))
 
     @ExceptionHandler(IllegalArgumentException::class)
     fun handleIllegalArgument(e: IllegalArgumentException): ResponseEntity<ErrorResponse> =
         ResponseEntity.badRequest()
-            .body(ErrorResponse("invalid_request", e.message ?: "잘못된 요청입니다"))
+            .body(ErrorResponse("invalid_request", e.message ?: "リクエストが正しくありません"))
 
     @ExceptionHandler(ClothesNotFoundException::class)
     fun handleClothesNotFound(e: ClothesNotFoundException): ResponseEntity<ErrorResponse> =
         ResponseEntity.status(HttpStatus.NOT_FOUND)
-            .body(ErrorResponse("not_found", "의류를 찾을 수 없습니다"))
+            .body(ErrorResponse("not_found", "服が見つかりません"))
 
     /*
      * `clothes_in_use` (409) 는 없앴다.
@@ -78,7 +86,7 @@ class ApiExceptionHandler {
     @ExceptionHandler(EmailAlreadyUsedException::class)
     fun handleEmailTaken(e: EmailAlreadyUsedException): ResponseEntity<ErrorResponse> =
         ResponseEntity.status(HttpStatus.CONFLICT)
-            .body(ErrorResponse("duplicate_email", "이미 가입된 이메일입니다"))
+            .body(ErrorResponse("duplicate_email", "すでに登録されているメールアドレスです"))
 
     /**
      * 로그인 실패와 토큰 오류는 모두 401 + 뭉뚱그린 메시지다. "이메일이 없습니다"와
@@ -87,12 +95,12 @@ class ApiExceptionHandler {
     @ExceptionHandler(InvalidCredentialsException::class)
     fun handleInvalidCredentials(e: InvalidCredentialsException): ResponseEntity<ErrorResponse> =
         ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-            .body(ErrorResponse("invalid_credentials", "이메일 또는 비밀번호가 올바르지 않습니다"))
+            .body(ErrorResponse("invalid_credentials", "メールアドレスまたはパスワードが正しくありません"))
 
     @ExceptionHandler(InvalidGeminiKeyException::class)
     fun handleInvalidGeminiKey(e: InvalidGeminiKeyException): ResponseEntity<ErrorResponse> =
         ResponseEntity.badRequest()
-            .body(ErrorResponse("invalid_key", "키가 거절되었습니다. 값을 다시 확인해 주세요."))
+            .body(ErrorResponse("invalid_key", "キーが拒否されました。値をもう一度確認してください。"))
 
     /**
      * 입력 검증 실패. 어느 필드가 왜 걸렸는지까지 돌려준다.
@@ -103,22 +111,22 @@ class ApiExceptionHandler {
     @ExceptionHandler(MethodArgumentNotValidException::class)
     fun handleValidation(e: MethodArgumentNotValidException): ResponseEntity<ErrorResponse> {
         val detail = e.bindingResult.fieldErrors
-            .joinToString(" ") { it.defaultMessage ?: "${it.field} 값이 올바르지 않습니다." }
-            .ifBlank { "입력값을 확인해 주세요." }
+            .joinToString(" ") { it.defaultMessage ?: "${it.field} の値が正しくありません。" }
+            .ifBlank { "入力内容を確認してください。" }
         return ResponseEntity.badRequest().body(ErrorResponse("invalid_request", detail))
     }
 
     @ExceptionHandler(InvalidTokenException::class)
     fun handleInvalidToken(e: InvalidTokenException): ResponseEntity<ErrorResponse> =
         ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-            .body(ErrorResponse("invalid_token", "유효하지 않은 토큰입니다"))
+            .body(ErrorResponse("invalid_token", "トークンが無効です"))
 
     // ── 이미지 업로드 ──────────────────────────────────────────────
 
     @ExceptionHandler(UnsupportedImageTypeException::class)
     fun handleUnsupportedImage(e: UnsupportedImageTypeException): ResponseEntity<ErrorResponse> =
         ResponseEntity.status(HttpStatus.UNSUPPORTED_MEDIA_TYPE)
-            .body(ErrorResponse("unsupported_image_type", "jpeg/png/webp 이미지만 업로드할 수 있습니다"))
+            .body(ErrorResponse("unsupported_image_type", "jpeg/png/webp の画像だけアップロードできます"))
 
     /**
      * 크기 초과는 두 경로로 들어온다. 애플리케이션 상한([ImageTooLargeException])과
@@ -129,12 +137,12 @@ class ApiExceptionHandler {
     @ExceptionHandler(ImageTooLargeException::class)
     fun handleImageTooLarge(e: ImageTooLargeException): ResponseEntity<ErrorResponse> =
         ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE)
-            .body(ErrorResponse("image_too_large", "이미지 상한은 ${e.maxBytes}바이트입니다"))
+            .body(ErrorResponse("image_too_large", "画像の上限は${e.maxBytes}バイトです"))
 
     @ExceptionHandler(MaxUploadSizeExceededException::class)
     fun handleMaxUpload(e: MaxUploadSizeExceededException): ResponseEntity<ErrorResponse> =
         ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE)
-            .body(ErrorResponse("image_too_large", "업로드 크기 상한을 초과했습니다"))
+            .body(ErrorResponse("image_too_large", "アップロードできるサイズを超えています"))
 
     // ── AI ────────────────────────────────────────────────────────
 
@@ -146,13 +154,13 @@ class ApiExceptionHandler {
     @ExceptionHandler(AiUnavailableException::class)
     fun handleAiUnavailable(e: AiUnavailableException): ResponseEntity<ErrorResponse> =
         ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
-            .body(ErrorResponse("ai_unavailable", "AI 기능을 사용할 수 없습니다"))
+            .body(ErrorResponse("ai_unavailable", "AI機能は今使えません"))
 
     /** 502. 우리 잘못도 클라이언트 잘못도 아니고 상류가 실패했다는 뜻이다. */
     @ExceptionHandler(AiCallFailedException::class)
     fun handleAiFailed(e: AiCallFailedException): ResponseEntity<ErrorResponse> =
         ResponseEntity.status(HttpStatus.BAD_GATEWAY)
-            .body(ErrorResponse("ai_failed", "AI 호출에 실패했습니다. 잠시 후 다시 시도해 주세요"))
+            .body(ErrorResponse("ai_failed", "AIの呼び出しに失敗しました。少し待ってからもう一度お試しください"))
 
     /**
      * 502. 응답은 왔지만 서버 검증에서 걸렀다(예: 존재하지 않는 clothesId).
@@ -162,25 +170,25 @@ class ApiExceptionHandler {
     @ExceptionHandler(AiInvalidResponseException::class)
     fun handleAiInvalid(e: AiInvalidResponseException): ResponseEntity<ErrorResponse> =
         ResponseEntity.status(HttpStatus.BAD_GATEWAY)
-            .body(ErrorResponse("ai_invalid_response", "AI 응답을 신뢰할 수 없어 거절했습니다"))
+            .body(ErrorResponse("ai_invalid_response", "AIの応答が信頼できないため受け付けませんでした"))
 
     @ExceptionHandler(NotEnoughClothesException::class)
     fun handleNotEnoughClothes(e: NotEnoughClothesException): ResponseEntity<ErrorResponse> =
         ResponseEntity.badRequest()
-            .body(ErrorResponse("not_enough_clothes", "상의와 하의를 각각 최소 1벌 등록해 주세요"))
+            .body(ErrorResponse("not_enough_clothes", "トップスとボトムスを最低1点ずつ登録してください"))
 
     @ExceptionHandler(NoBodyPhotoException::class)
     fun handleNoBodyPhoto(e: NoBodyPhotoException): ResponseEntity<ErrorResponse> =
         ResponseEntity.badRequest()
-            .body(ErrorResponse("no_body_photo", "전신 사진을 먼저 등록해 주세요"))
+            .body(ErrorResponse("no_body_photo", "先に全身写真を登録してください"))
 
     @ExceptionHandler(CoordinationNotFoundException::class)
     fun handleCoordinationNotFound(e: CoordinationNotFoundException): ResponseEntity<ErrorResponse> =
         ResponseEntity.status(HttpStatus.NOT_FOUND)
-            .body(ErrorResponse("not_found", "코디를 찾을 수 없습니다"))
+            .body(ErrorResponse("not_found", "コーデが見つかりません"))
 
     @ExceptionHandler(UserNotFoundException::class)
     fun handleUserNotFound(e: UserNotFoundException): ResponseEntity<ErrorResponse> =
         ResponseEntity.status(HttpStatus.NOT_FOUND)
-            .body(ErrorResponse("not_found", "사용자를 찾을 수 없습니다"))
+            .body(ErrorResponse("not_found", "ユーザーが見つかりません"))
 }
