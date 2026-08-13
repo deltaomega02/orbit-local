@@ -1,12 +1,15 @@
 package com.orbit.web
 
 import com.orbit.domain.Coordination
+import com.orbit.domain.CoordinationLimits
 import com.orbit.domain.MainCategory
 import com.orbit.security.AuthenticatedUser
 import com.orbit.service.CoordinationService
 import com.orbit.service.OutfitAiService
+import jakarta.validation.Valid
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.NotEmpty
+import jakarta.validation.constraints.Size
 import org.springframework.data.domain.PageRequest
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
@@ -18,6 +21,27 @@ import java.time.Instant
 data class CreateCoordinationRequest(
     @field:NotBlank val title: String,
     @field:NotEmpty val clothesIds: List<Long>,
+)
+
+/**
+ * 추천 요청 본문. **전부 선택이고, 본문 자체가 없어도 된다.**
+ *
+ * 원래 이 엔드포인트는 본문이 없었다(서버가 옷장 전체를 후보로 삼으므로 클라이언트가
+ * 보낼 값이 없었다). 그 계약을 깨지 않는 것이 조건이라 본문은 `required = false` 고,
+ * 없거나 `{}` 면 예전과 완전히 같은 경로를 탄다.
+ */
+data class RecommendCoordinationRequest(
+    /**
+     * 오늘의 상황 한 줄("비 오고 쌀쌀해", "면접 보러 가", "친구랑 카페").
+     *
+     * 추천은 지금까지 맥락이 없었다 — 같은 옷장이면 월요일 출근과 주말 산책에 같은
+     * 답이 나온다. 이 한 줄이 그 차이를 만든다.
+     *
+     * 상한이 있는 이유는 추천을 부를 때마다 프롬프트에 실려 나가기 때문이다. 길이가
+     * 곧 토큰 비용이고, 100자를 넘겨 적을 만한 "오늘의 상황"은 사실 취향에 가깝다
+     * (그건 `PUT /api/users/me/style-preference` 쪽 일이다).
+     */
+    @field:Size(max = CoordinationLimits.SITUATION) val situation: String? = null,
 )
 
 data class CoordinationItemResponse(
@@ -54,6 +78,13 @@ data class CoordinationResponse(
     val title: String,
     /** AI 추천이면 추천 이유, 수동 생성이면 null. */
     val reason: String?,
+    /**
+     * 추천을 요청하며 적어 준 오늘의 상황. 적지 않았거나 수동 생성이면 null.
+     *
+     * [reason] 과 짝이다 — 이쪽이 "무엇을 위한 조합이었나", 저쪽이 "왜 이 조합인가"다.
+     * 기록에서 "그때 왜 이걸 입었지"에 답하려면 둘 다 필요하다.
+     */
+    val situation: String?,
     val createdAt: Instant,
     val items: List<CoordinationItemResponse>,
     /** 아직 만들지 않았으면 null. 만들려면 `POST /api/coordinations/{id}/tryon`. */
@@ -70,6 +101,7 @@ data class CoordinationResponse(
             lookNo = requireNotNull(c.lookNo) { "LOOK 번호가 없는 코디입니다: ${c.id}" },
             title = c.title,
             reason = c.reason,
+            situation = c.situation,
             createdAt = c.createdAt,
             items = c.items.map {
                 CoordinationItemResponse(
@@ -132,17 +164,30 @@ class CoordinationController(
 ) {
 
     /**
-     * AI 추천. 본문이 없다 — 서버가 옷장 전체를 후보로 삼기 때문에 클라이언트가
-     * 보낼 값이 없다. 응답 계약은 수동 생성과 완전히 같고, 중복이면 여기서도
-     * 409 + `retry: true` 가 나간다.
+     * AI 추천. 옷장 전체가 후보이므로 클라이언트가 고를 것은 없고, 보낼 수 있는 값은
+     * **오늘의 상황 한 줄**뿐이다([RecommendCoordinationRequest]).
+     *
+     * **본문은 선택이다.** `required = false` 라 본문 없이 부르던 기존 클라이언트가
+     * 그대로 동작한다 — 이 엔드포인트는 원래 본문이 없었고, 그 계약을 깨면서 기능을
+     * 더할 이유가 없다. 빈 본문·`{}`·`{"situation":"  "}` 는 전부 "상황 없음"이다.
+     *
+     * 응답 계약은 수동 생성과 완전히 같고(상황이 있으면 `situation` 에 실려 나간다),
+     * 중복이면 여기서도 409 + `retry: true` 가 나간다.
      *
      * 409 가 하나 더 있다 — [ExhaustedResponse]. "다시 눌러 볼 만하다"(duplicate)와
      * "더 눌러도 소용없다"(exhausted)는 사용자가 할 일이 다르므로 `error` 로 갈린다.
      * 후자는 AI 를 부르기 전에 판정되므로 기다림도 과금도 없다.
+     *
+     * 502 `ai_invalid_response` 도 여기서 나올 수 있다 — 없는 옷 id 를 돌려줬거나
+     * 구성이 한 벌이 아닌 응답을 서버가 거절한 경우다
+     * ([com.orbit.service.OutfitAiService.recommend]).
      */
     @PostMapping("/recommend")
-    fun recommend(@AuthenticationPrincipal user: AuthenticatedUser): ResponseEntity<CoordinationResponse> {
-        val created = outfitAiService.recommend(user.id)
+    fun recommend(
+        @AuthenticationPrincipal user: AuthenticatedUser,
+        @Valid @RequestBody(required = false) request: RecommendCoordinationRequest?,
+    ): ResponseEntity<CoordinationResponse> {
+        val created = outfitAiService.recommend(user.id, request?.situation)
         return ResponseEntity.status(HttpStatus.CREATED).body(CoordinationResponse.from(created))
     }
 

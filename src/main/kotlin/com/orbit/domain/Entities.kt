@@ -24,6 +24,15 @@ object ClothesLimits {
     const val DETAIL = 200
 }
 
+/** 코디 텍스트 필드의 길이 상한. [ClothesLimits] 와 같은 이유로 한 곳에 둔다. */
+object CoordinationLimits {
+    /**
+     * 오늘의 상황 한 줄. 추천을 부를 때마다 프롬프트에 실려 나가므로 길이가 곧
+     * 토큰 비용이다. 100자면 "비 오고 쌀쌀한데 면접 보러 가" 같은 문장이 충분히 들어간다.
+     */
+    const val SITUATION = 100
+}
+
 /*
  * [Clothes] · [Coordination] 의 `ownerId` 는 [User] 의 id 다.
  * `@ManyToOne User` 로 연관을 걸지 않고 id 값으로만 참조한다.
@@ -194,6 +203,22 @@ class Coordination(
      */
     @Column(length = 500)
     var reason: String? = null,
+
+    /**
+     * 사용자가 추천을 요청하며 적어 준 오늘의 상황("비 오고 쌀쌀해", "면접 보러 가").
+     * 적지 않고 추천받았거나 수동 생성이면 null 이다.
+     *
+     * **왜 저장하는가.** 이 앱은 "그때 왜 이걸 입었지"를 다시 보는 기록 앱이다.
+     * 상황은 그 질문에 대한 답의 절반이다 — [reason] 이 "왜 이 조합인가"를 말한다면
+     * 이 값은 "무엇을 위한 조합이었나"를 말한다. 프롬프트에만 쓰고 버리면 같은
+     * 코디가 목록에서 이유 없는 조합으로 남는다.
+     *
+     * 사용자가 자기 말로 적은 문장이라 그대로 화면에 나간다. 프롬프트에 넣을 때의
+     * 취급(지시문이 아니라 맥락)은
+     * [com.orbit.ai.gemini.GeminiOutfitRecommender.buildPrompt] 에 적어 뒀다.
+     */
+    @Column(length = CoordinationLimits.SITUATION)
+    var situation: String? = null,
 ) {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

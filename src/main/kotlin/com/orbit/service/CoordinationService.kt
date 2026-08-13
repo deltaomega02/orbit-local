@@ -65,10 +65,16 @@ class CoordinationService(
      * 마지막 시도의 예외는 삼키지 않고 그대로 올린다. 번호를 못 받았는데 코디가
      * 저장된 것처럼 보이는 것보다, 실패가 실패로 보이는 편이 낫다.
      */
-    fun create(ownerId: Long, title: String, clothesIds: List<Long>, reason: String? = null): Coordination {
+    fun create(
+        ownerId: Long,
+        title: String,
+        clothesIds: List<Long>,
+        reason: String? = null,
+        situation: String? = null,
+    ): Coordination {
         repeat(LOOK_NO_MAX_ATTEMPTS - 1) {
             try {
-                return creator.createOnce(ownerId, title, clothesIds, reason)
+                return creator.createOnce(ownerId, title, clothesIds, reason, situation)
             } catch (retryable: DataIntegrityViolationException) {
                 // 유니크 제약 위반 — 다른 요청이 같은 번호를 먼저 가져갔다.
                 // 다음 시도는 새 트랜잭션에서 카운터를 다시 읽으므로 그 다음 번호를 받는다.
@@ -82,7 +88,7 @@ class CoordinationService(
                 // 상위 타입으로 받는다.
             }
         }
-        return creator.createOnce(ownerId, title, clothesIds, reason)
+        return creator.createOnce(ownerId, title, clothesIds, reason, situation)
     }
 
     /** 오늘 만들어진 코디 중 정확히 같은 의류 집합이 있는지. */
@@ -232,7 +238,13 @@ class CoordinationCreator(
      *  없는 사용자의 목록이 LOOK 001 다음 LOOK 005 가 된다.)
      */
     @Transactional
-    fun createOnce(ownerId: Long, title: String, clothesIds: List<Long>, reason: String?): Coordination {
+    fun createOnce(
+        ownerId: Long,
+        title: String,
+        clothesIds: List<Long>,
+        reason: String?,
+        situation: String? = null,
+    ): Coordination {
         require(clothesIds.isNotEmpty()) { "clothesIds는 비어 있을 수 없습니다" }
 
         val requested = clothesIds.toSet()
@@ -248,7 +260,14 @@ class CoordinationCreator(
             throw DuplicateCoordinationException(requested)
         }
 
-        val coordination = Coordination(ownerId = ownerId, title = title, reason = reason)
+        val coordination = Coordination(
+            ownerId = ownerId,
+            title = title,
+            reason = reason,
+            // 값을 다듬는 곳은 호출부([OutfitAiService.recommend]) 하나다. 여기서 또
+            // 자르면 규칙이 두 곳이 되고, 두 곳은 언젠가 어긋난다.
+            situation = situation,
+        )
         coordination.lookNo = allocateLookNo(ownerId)
         // 카테고리로 레이어 순서를 정한다. 정렬을 안정적으로 만들기 위해
         // 같은 카테고리 안에서는 id 순으로 둔다.

@@ -10,6 +10,7 @@ import com.orbit.ai.RecommendRequest
 import com.orbit.ai.TryOnImageGenerator
 import com.orbit.domain.Clothes
 import com.orbit.domain.Coordination
+import com.orbit.domain.CoordinationLimits
 import com.orbit.domain.MainCategory
 import com.orbit.media.MediaStorage
 import com.orbit.repository.ClothesRepository
@@ -82,9 +83,18 @@ class OutfitAiService(
      * 마주치는 상태에서 40초와 세 번의 과금이 확정적으로 낭비된다. 그래서 호출 전에
      * [RecommendableCombinations] 로 먼저 센다. 셈이 "더 나올 것이 없다"고 하면
      * AI 를 부르지 않고 [CombinationsExhaustedException] 으로 즉시 끝낸다.
+     *
+     * [situation] 은 사용자가 이번 한 번만 적어 주는 오늘의 맥락("비 오고 쌀쌀해")이다.
+     * 선택이고, 없으면 예전과 완전히 같은 경로를 탄다. 프롬프트에 실릴 뿐 아니라
+     * 코디에 함께 저장된다 — 기록에서 "그때 왜 이걸 입었지"에 답하는 값이라
+     * 프롬프트에만 쓰고 버리면 절반만 남는다.
+     *
      */
-    fun recommend(ownerId: Long): Coordination {
+    fun recommend(ownerId: Long, situation: String? = null): Coordination {
         val recommender = recommenderProvider.require()
+        // 공백만 적어 보낸 것은 안 적은 것과 같다. 여기서 한 번 눌러 두면 아래 저장,
+        // 프롬프트, 응답이 전부 같은 값을 본다.
+        val context = situation?.trim()?.takeIf { it.isNotBlank() }?.take(CoordinationLimits.SITUATION)
 
         // 옷장에서 치운 옷은 후보에 넣지 않는다. 이미 버린 옷을 오늘 입으라고
         // 추천하는 것만큼 쓸모없는 결과도 없다.
@@ -119,6 +129,7 @@ class OutfitAiService(
                 // 저장만 하고 쓰지 않으면 설정 화면이 장식이 된다. 이 값이 실제로
                 // 프롬프트까지 도달하는지는 테스트로 고정해 뒀다(StylePreferenceTest).
                 stylePreference = userRepository.findById(ownerId).orElse(null)?.stylePreference,
+                situation = context,
             ),
         )
 
@@ -136,7 +147,7 @@ class OutfitAiService(
             throw AiInvalidResponseException("추천 결과에 소유하지 않은 의류 id 가 있습니다: ${suggested - ownedIds}")
         }
 
-        return coordinationService.create(ownerId, suggestion.title, suggested, suggestion.reason)
+        return coordinationService.create(ownerId, suggestion.title, suggested, suggestion.reason, context)
     }
 
     /**
