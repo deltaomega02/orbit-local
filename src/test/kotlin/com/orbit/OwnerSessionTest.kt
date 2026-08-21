@@ -146,13 +146,13 @@ class OwnerSessionTest {
     /**
      * 이 테스트가 이 파일에서 가장 중요하다.
      *
-     * 실제 상황을 그대로 옮긴 것이다 — DB 에는 `eriko@orbit.test`(옷이 든 계정)가
+     * 실제 상황을 그대로 옮긴 것이다 — DB 에는 `existing@orbit.test`(옷이 든 계정)가
      * 있고, 설정 이메일은 `owner@orbit.test` 로 그와 다르다. 이메일 일치만 보는
      * 규칙이면 여기서 빈 계정을 새로 만들고 사용자는 옷장을 잃는다.
      */
     @Test
     fun `설정 이메일과 다르더라도 옷이 든 기존 계정을 이어받는다`() {
-        val existing = existingUser("eriko@orbit.test")
+        val existing = existingUser("existing@orbit.test")
         val existingId = requireNotNull(existing.id)
         clothesOf(existingId, "흰 린넨 셔츠", MainCategory.TOP)
         clothesOf(existingId, "연청 데님", MainCategory.BOTTOM)
@@ -171,7 +171,7 @@ class OwnerSessionTest {
         // 감사용으로 만들어 둔 빈 계정이 **먼저** 만들어져 있는 상황.
         // "가장 오래된 계정" 규칙이었다면 여기서 빈 계정을 골라 옷장을 잃는다.
         val audit = existingUser("audit@orbit.test", displayName = "감사")
-        val real = existingUser("eriko@orbit.test")
+        val real = existingUser("existing@orbit.test")
         val realId = requireNotNull(real.id)
         clothesOf(realId, "네이비 셔츠", MainCategory.TOP)
 
@@ -194,7 +194,7 @@ class OwnerSessionTest {
 
     @Test
     fun `한 번 정해진 주인은 데이터가 움직여도 바뀌지 않는다`() {
-        val first = existingUser("eriko@orbit.test")
+        val first = existingUser("existing@orbit.test")
         clothesOf(requireNotNull(first.id), "네이비 셔츠", MainCategory.TOP)
         val owner = ownerAccountService.resolveOrCreate()
 
@@ -209,13 +209,13 @@ class OwnerSessionTest {
 
     @Test
     fun `이어받은 계정의 이메일은 건드리지 않는다`() {
-        val existing = existingUser("eriko@orbit.test")
+        val existing = existingUser("existing@orbit.test")
         clothesOf(requireNotNull(existing.id), "네이비 셔츠", MainCategory.TOP)
 
         val owner = ownerAccountService.resolveOrCreate()
 
         // 이메일은 식별자다. 화면에 나가지도 않는 값을 위해 계정을 옮길 이유가 없다.
-        assertEquals("eriko@orbit.test", owner.email)
+        assertEquals("existing@orbit.test", owner.email)
         // 반대로 화면에 나가는 이름은 설정이 진실이라 설정값으로 맞춘다.
         assertEquals("テスト主", owner.displayName)
     }

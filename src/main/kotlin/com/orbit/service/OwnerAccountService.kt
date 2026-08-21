@@ -31,8 +31,8 @@ import java.util.Base64
  */
 @ConfigurationProperties(prefix = "orbit.owner")
 data class OwnerProperties(
-    val displayName: String = "エリ",
-    val email: String = "eri@orbit.local",
+    val displayName: String = "ユーザー",
+    val email: String = "owner@orbit.local",
 )
 
 /**
@@ -55,7 +55,7 @@ data class OwnerProperties(
  *
  * **왜 설정 이메일 일치를 1순위로 두지 않는가.** 그게 가장 자연스러운 규칙처럼
  * 보이지만, 이 앱에서는 정확히 그 규칙이 사고를 낸다. 지금 DB 에 들어 있는 계정은
- * `eriko@orbit.test`(옷 7벌·룩 7개)인데 설정 이메일은 `eri@orbit.local` 이다.
+ * `existing@orbit.test`(옷 7벌·룩 7개)인데 설정 이메일은 `owner@orbit.local` 이다.
  * 이메일 일치만 보면 하나도 걸리지 않아 **빈 계정을 새로 만들고**, 사용자는 앱을
  * 켜자마자 텅 빈 옷장을 보게 된다. 데이터는 DB 에 그대로 있는데 화면에서만 사라지는
  * 것이라 사용자 입장에서는 "옷장을 잃었다"와 구별되지 않는다.

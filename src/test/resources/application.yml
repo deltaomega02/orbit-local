@@ -13,7 +13,7 @@ logging:
     org.hibernate.stat: WARN
 
 orbit:
-  # 일부러 코드 기본값(エリ / eri@orbit.local)과 다른 값을 준다. 같은 값이면
+  # 일부러 코드 기본값(ユーザー / owner@orbit.local)과 다른 값을 준다. 같은 값이면
   # "설정을 읽어서 쓴 것"과 "코드에 박힌 값이 우연히 맞은 것"을 테스트가 구별하지
   # 못한다. OwnerSessionTest 가 이 값이 화면(/api/users/me)까지 나오는지 본다.
   owner:

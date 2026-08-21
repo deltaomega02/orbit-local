@@ -38,8 +38,8 @@ orbit:
   # 이 앱을 쓰는 한 사람. 로그인 화면 대신 서버가 이 사람의 세션을 자동으로 연다
   # (POST /api/auth/session → OwnerAccountService).
   owner:
-    display-name: "エリ"          # 화면에 보이는 이름. 여기 한 줄만 고치면 바뀐다
-    email: "eri@orbit.local"      # 내부 식별자(계정 유니크 키). 화면에 노출하지 않는다
+    display-name: "ユーザー"          # 화면에 보이는 이름. 여기 한 줄만 고치면 바뀐다
+    email: "owner@orbit.local"      # 내부 식별자(계정 유니크 키). 화면에 노출하지 않는다
     # 이 이메일은 **계정을 새로 만들 때 쓰는 값**이지, 기존 계정을 찾는 열쇠가 아니다.
     # 이미 데이터가 있는 DB 에서 기동하면 이메일이 달라도 그 계정을 이어받는다.
     # 근거는 OwnerAccountService 주석에 적어 뒀다 — 이메일 일치만 보면 기존 옷장을
