@@ -32,6 +32,10 @@ data class StylePreferenceResponse(val preference: String?)
 
 data class UpdateStylePreferenceRequest(val preference: String?)
 
+data class DisplayNameResponse(val displayName: String)
+
+data class UpdateDisplayNameRequest(val displayName: String = "")
+
 @RestController
 @RequestMapping("/api/users/me")
 class UserController(
@@ -61,6 +65,19 @@ class UserController(
         val path = userService.updateBodyPhoto(user.id, image.bytes, image.contentType)
         return BodyPhotoResponse(requireNotNull(mediaUrl(path)))
     }
+
+    /**
+     * 화면에 보이는 이름 교체.
+     *
+     * PUT 인 이유는 전신 사진·취향과 같다 — 사용자당 값이 하나뿐이라 단일 리소스의 치환이다.
+     * 빈 값은 400 으로 거절한다. 취향과 달리 이름은 비울 수 있는 값이 아니다.
+     */
+    @PutMapping("/display-name")
+    fun updateDisplayName(
+        @AuthenticationPrincipal user: AuthenticatedUser,
+        @RequestBody request: UpdateDisplayNameRequest,
+    ): DisplayNameResponse =
+        DisplayNameResponse(userService.updateDisplayName(user.id, request.displayName))
 
     /**
      * 추천에 반영할 취향 한 문장. 이 값은 저장에서 끝나지 않고

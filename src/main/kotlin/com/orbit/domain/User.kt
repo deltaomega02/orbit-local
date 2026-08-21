@@ -79,6 +79,20 @@ class User(
     var ownerFlag: Boolean? = null
 
     /**
+     * 화면 이름을 **사용자가 직접 바꿨는가**([com.orbit.service.UserService.updateDisplayName]).
+     *
+     * 이 값이 true 면 [com.orbit.service.OwnerAccountService] 가 기동할 때마다 하는
+     * 설정 동기화를 건너뛴다. 사용자가 앱에서 고른 이름이 설정 파일보다 우선한다 —
+     * 화면에서 바꿀 수 있게 해 놓고 다음 기동에 되돌려 버리면 바꾼 적이 없는 것과 같다.
+     *
+     * `ownerFlag` 와 같은 이유로 타입이 `Boolean?` 이다. `ddl-auto: update` 는 기존
+     * 행에 값을 채워 주지 않으므로 NULL 이 들어온다. NULL 은 "직접 바꾼 적 없음"으로
+     * 읽어 종전대로 설정을 따른다.
+     */
+    @Column(name = "display_name_customized")
+    var displayNameCustomized: Boolean? = null
+
+    /**
      * 로그를 찍다 실수로 해시가 새는 일을 막는다. 해시는 평문보다 안전하지만
      * 유출되면 오프라인 대입 공격의 재료가 되므로 출력 대상이 아니다.
      */

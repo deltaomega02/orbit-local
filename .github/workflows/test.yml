@@ -1,0 +1,48 @@
+# 테스트를 돌린다.
+#
+# 이 저장소의 테스트는 237개이고, 그중 상당수가 "무엇을 하는가"가 아니라
+# **"어떻게 깨지는가"** 를 잡는다 — 동시 생성에서 LOOK 번호가 겹치는지,
+# 이어받기가 옷 없는 계정을 고르는지 같은 것들이다. 그런 테스트는 손으로 돌리는
+# 한 언젠가 안 돌게 되므로 push 마다 자동으로 돌린다.
+#
+# Windows 패키징(windows-package.yml)과 나누어 둔 이유는 목적이 다르기 때문이다.
+# 그쪽은 배포본을 만드는 자리라 수동으로만 돈다. 여기는 코드가 성한지 보는 자리다.
+
+name: テスト
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+# 같은 브랜치에 연달아 push 하면 앞의 실행은 의미가 없다. 취소해서 러너를 아낀다.
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21" # build.gradle.kts 의 jvmToolchain(21) 과 같아야 한다
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: 테스트
+        run: ./gradlew test --no-daemon
+
+      # 실패했을 때 로그만 보고 원인을 찾기는 어렵다. HTML 리포트를 남겨 둔다.
+      - name: 리포트 보관
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-report
+          path: build/reports/tests/test
+          retention-days: 7
+          if-no-files-found: ignore
