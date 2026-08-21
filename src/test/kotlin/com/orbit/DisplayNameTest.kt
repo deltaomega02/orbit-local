@@ -80,22 +80,22 @@ class DisplayNameTest {
     fun `바꾼 이름이 응답과 조회에 함께 반영된다`() {
         val bearer = openSession()
 
-        putName(bearer, "エリ")
+        putName(bearer, "あたらしい名前")
             .andExpect(status().isOk)
-            .andExpect(jsonPath("$.displayName").value("エリ"))
+            .andExpect(jsonPath("$.displayName").value("あたらしい名前"))
 
         mockMvc.perform(get("/api/users/me").header("Authorization", bearer))
             .andExpect(status().isOk)
-            .andExpect(jsonPath("$.displayName").value("エリ"))
+            .andExpect(jsonPath("$.displayName").value("あたらしい名前"))
     }
 
     @Test
     fun `앞뒤 공백은 저장 전에 떨어진다`() {
         val bearer = openSession()
 
-        putName(bearer, "  エリ  ")
+        putName(bearer, "  あたらしい名前  ")
             .andExpect(status().isOk)
-            .andExpect(jsonPath("$.displayName").value("エリ"))
+            .andExpect(jsonPath("$.displayName").value("あたらしい名前"))
     }
 
     @Test
@@ -131,25 +131,25 @@ class DisplayNameTest {
     @Test
     fun `바꾼 이름은 다음 세션에서 설정값으로 되돌아가지 않는다`() {
         val bearer = openSession()
-        putName(bearer, "エリ").andExpect(status().isOk)
+        putName(bearer, "あたらしい名前").andExpect(status().isOk)
 
         // 세션을 다시 여는 것은 앱을 다시 켜는 것과 같다. 여기서 설정 동기화가 돈다.
         val again = openSession()
 
         mockMvc.perform(get("/api/users/me").header("Authorization", again))
             .andExpect(status().isOk)
-            .andExpect(jsonPath("$.displayName").value("エリ"))
+            .andExpect(jsonPath("$.displayName").value("あたらしい名前"))
     }
 
     @Test
     fun `resolveOrCreate 를 여러 번 불러도 바꾼 이름이 남는다`() {
         val bearer = openSession()
-        putName(bearer, "エリ").andExpect(status().isOk)
+        putName(bearer, "あたらしい名前").andExpect(status().isOk)
 
         repeat(3) { ownerAccountService.resolveOrCreate() }
 
         val owner = requireNotNull(userRepository.findAll().firstOrNull { it.ownerFlag == true })
-        assertEquals("エリ", owner.displayName)
+        assertEquals("あたらしい名前", owner.displayName)
         assertTrue(owner.displayNameCustomized == true, "바꿨다는 표시가 남아 있어야 한다")
     }
 
@@ -184,12 +184,12 @@ class DisplayNameTest {
             ),
         )
         // 사용자가 직접 골랐다는 표시를 세워 둔다 (앱에서 저장한 것과 같은 상태).
-        existing.displayName = "エリ"
+        existing.displayName = "あたらしい名前"
         existing.displayNameCustomized = true
         userRepository.saveAndFlush(existing)
 
         val owner = ownerAccountService.resolveOrCreate()
 
-        assertEquals("エリ", owner.displayName, "설정값으로 덮어쓰면 안 된다")
+        assertEquals("あたらしい名前", owner.displayName, "설정값으로 덮어쓰면 안 된다")
     }
 }
