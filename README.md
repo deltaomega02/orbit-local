@@ -73,7 +73,7 @@ ORBIT_JWT_SECRET='...32바이트 이상...' ./gradlew bootRun
 ## Windows 배포본
 
 받아서 바로 쓰실 수 있는 빌드가 있습니다 →
-**[Releases v1.0.0](https://github.com/deltaomega02/orbit-local/releases/tag/v1.0.0)**
+**[Releases v1.1.0](https://github.com/deltaomega02/orbit-local/releases/tag/v1.1.0)**
 (포터블 zip, JDK 설치 불필요·관리자 권한 불필요)
 
 ### 직접 만들기
