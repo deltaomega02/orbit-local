@@ -169,7 +169,9 @@ class DisplayNameTest {
         val owner = ownerAccountService.resolveOrCreate()
 
         assertEquals(requireNotNull(stale.id), requireNotNull(owner.id), "옷장을 가진 계정을 이어받아야 한다")
-        assertEquals("ユーザー", owner.displayName, "바꾼 적이 없으면 설정값을 따른다")
+        // 테스트 프로파일의 orbit.owner.display-name 값이다. 코드 기본값(ユーザー)과
+        // 일부러 다르게 두어, 설정을 실제로 읽었는지 우연히 맞은 것인지를 구별한다.
+        assertEquals("テスト主", owner.displayName, "바꾼 적이 없으면 설정값을 따른다")
     }
 
     @Test
