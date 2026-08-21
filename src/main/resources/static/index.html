@@ -352,6 +352,29 @@
         <p class="num" id="more-name"></p>
       </div>
 
+      <!-- 표시 이름 -->
+      <section class="panel" id="panel-name">
+        <p class="indexlabel">Your name</p>
+        <h3 class="panel__title">表示名</h3>
+        <p class="panel__desc">アプリの中であなたを呼ぶときの名前です。いつでも変えられます。</p>
+
+        <div class="panel__body">
+          <form class="form" id="form-name">
+            <div class="field">
+              <label for="name-input" class="vh">表示名</label>
+              <input id="name-input" type="text" maxlength="40" autocomplete="nickname"
+                     placeholder="例）エリ">
+              <p class="field__hint num"><span id="name-count">0</span> / 40</p>
+            </div>
+            <div class="note note--error" id="name-error" role="alert" hidden></div>
+            <button type="submit" class="btn btn--primary btn--block" id="btn-name-save">
+              <span class="btn__spinner" aria-hidden="true"></span>
+              <span class="btn__text">保存</span>
+            </button>
+          </form>
+        </div>
+      </section>
+
       <!-- AI 연결 -->
       <section class="panel" id="panel-key">
         <p class="indexlabel">AI Connection</p>

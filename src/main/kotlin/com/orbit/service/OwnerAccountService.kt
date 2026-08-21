@@ -142,12 +142,22 @@ class OwnerAccountService(
         clothesRepository.countByOwnerId(userId) + coordinationRepository.countByOwnerId(userId)
 
     /**
-     * 화면에 보이는 이름은 **설정이 진실**이다. 이어받은 계정의 이름이 예전 값이면
-     * 설정값으로 맞춘다 — "설정 한 줄로 이름을 바꾼다"가 성립하려면 이 동기화가
-     * 있어야 한다. 이메일은 건드리지 않는다. 식별자를 바꾸는 것은 계정을 옮기는
-     * 일이고, 화면에 나가지도 않는 값을 위해 그런 위험을 질 이유가 없다.
+     * 화면 이름을 설정값으로 맞춘다. **단, 사용자가 앱에서 직접 바꿨으면 건드리지 않는다.**
+     *
+     * 원래 이 자리의 규칙은 "이름은 설정이 진실"이었다. 설정 파일을 고칠 수 있는
+     * 사람만 이름을 바꿀 수 있던 시절에는 그게 맞았다. 이제 앱 안에서 바꿀 수 있으므로
+     * ([com.orbit.service.UserService.updateDisplayName]) 규칙을 뒤집는다 —
+     * **사용자가 고른 이름이 설정보다 우선한다.** 화면에서 바꾸게 해 놓고 다음 기동에
+     * 설정값으로 되돌리면 바꾼 적이 없는 것과 같고, 사용자는 앱이 자기 입력을 삼켰다고 본다.
+     *
+     * 아직 한 번도 바꾸지 않은 계정([User.displayNameCustomized] 이 null 이거나 false)은
+     * 종전대로 설정을 따른다. 그래야 배포본의 기본 이름을 설정 한 줄로 정하는 방식이 유지된다.
+     *
+     * 이메일은 여전히 건드리지 않는다. 식별자를 바꾸는 것은 계정을 옮기는 일이고,
+     * 화면에 나가지도 않는 값을 위해 그런 위험을 질 이유가 없다.
      */
     private fun syncDisplayName(user: User): User {
+        if (user.displayNameCustomized == true) return user
         val wanted = displayName()
         if (user.displayName != wanted) user.displayName = wanted
         return user

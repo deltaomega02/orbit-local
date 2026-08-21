@@ -2656,6 +2656,10 @@
     var name = (state.user && state.user.displayName) || '';
     $('#more-name').textContent = name;
     show($('#more-name'), !!name);
+    // 입력칸은 화면에 들어올 때마다 서버 값으로 맞춘다. 저장하지 않고 나갔다가
+    // 다시 들어왔을 때 고치다 만 문자열이 남아 있으면 그게 저장된 값처럼 보인다.
+    $('#name-input').value = name;
+    updateNameCount();
     renderBodyPhoto();
     renderAiState();
     loadStats().then(renderStatsPanel).catch(function () {});
@@ -2842,6 +2846,41 @@
     }).catch(function (err) {
       if (isExpired(err)) return;
       setNote($('#style-error'), api.isNotDeployed(err)
+        ? '今は保存できません。しばらくしてからもう一度お試しください。'
+        : humanError(err));
+    }).finally(done);
+  });
+
+  /* ---------------- 표시 이름 ---------------- */
+  function updateNameCount() {
+    $('#name-count').textContent = String($('#name-input').value.length);
+  }
+  $('#name-input').addEventListener('input', updateNameCount);
+
+  $('#form-name').addEventListener('submit', function (e) {
+    e.preventDefault();
+    setNote($('#name-error'), '');
+    var value = $('#name-input').value.trim();
+    if (!value) {
+      // 서버도 거절하지만, 눌러서 실패를 기다리게 하는 것보다 여기서 막는 편이 빠르다.
+      setNote($('#name-error'), '表示名を入力してください。');
+      return;
+    }
+    var done = busy($('#btn-name-save'), '保存しています…');
+
+    api.users.saveDisplayName(value).then(function (res) {
+      var saved = (res && res.displayName) || value;
+      // 서버가 자른 결과를 그대로 반영한다. 화면 곳곳이 state.user 를 읽으므로
+      // 여기서 갱신하지 않으면 다시 켤 때까지 옛 이름이 남는다.
+      if (state.user) state.user.displayName = saved;
+      $('#more-name').textContent = saved;
+      show($('#more-name'), true);
+      $('#name-input').value = saved;
+      updateNameCount();
+      toast('表示名を保存しました。');
+    }).catch(function (err) {
+      if (isExpired(err)) return;
+      setNote($('#name-error'), api.isNotDeployed(err)
         ? '今は保存できません。しばらくしてからもう一度お試しください。'
         : humanError(err));
     }).finally(done);

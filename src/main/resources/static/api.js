@@ -319,6 +319,11 @@
         return request('/api/users/me/style-preference', {
           method: 'PUT', json: { preference: preference }
         });
+      },
+      saveDisplayName: function (displayName) {
+        return request('/api/users/me/display-name', {
+          method: 'PUT', json: { displayName: displayName }
+        });
       }
     },
 
