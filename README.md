@@ -70,7 +70,13 @@ ORBIT_JWT_SECRET='...32바이트 이상...' ./gradlew bootRun
 
 **설치본(Windows exe)에서는 다릅니다.** 위 개발용 기본값을 쓰지 않고, 첫 실행에 기기마다 다른 시크릿을 만들어 `%LOCALAPPDATA%\Orbit\jwt.key` 에 두고 그 뒤로 재사용합니다(`OrbitEnvironmentPostProcessor.installDesktopJwtSecret`). 받는 사람에게 "환경변수를 설정하세요"라고 할 수는 없고, 그렇다고 모든 설치본이 저장소에 적힌 같은 값을 쓰는 것은 시크릿이 없는 것과 크게 다르지 않기 때문입니다. `ORBIT_JWT_SECRET` 을 직접 준 경우에는 그 값을 존중합니다.
 
-## Windows 배포본 만들기
+## Windows 배포본
+
+받아서 바로 쓰실 수 있는 빌드가 있습니다 →
+**[Releases v1.0.0](https://github.com/deltaomega02/orbit-local/releases/tag/v1.0.0)**
+(포터블 zip, JDK 설치 불필요·관리자 권한 불필요)
+
+### 직접 만들기
 
 받는 사람은 개발자가 아니고 JDK도 없습니다. 그래서 **자바 런타임을 통째로 안고 나가는 실행 파일**로 포장합니다. `jpackage` 는 **크로스 빌드를 하지 못하므로**(macOS에서 Windows exe를 만들 수 없습니다) GitHub Actions의 `windows-latest` 러너에서 만듭니다.
 
