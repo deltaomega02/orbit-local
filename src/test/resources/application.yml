@@ -1,0 +1,36 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:orbit_test;DB_CLOSE_DELAY=-1;MODE=MySQL
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    open-in-view: false
+    properties:
+      hibernate:
+        generate_statistics: true   # N+1 검증 테스트에서 쿼리 수를 센다
+logging:
+  level:
+    org.hibernate.stat: WARN
+
+orbit:
+  # 설정값이 실제로 읽히는지 구별하려고 코드 기본값(ユーザー / owner@orbit.local)과 다르게 둔다.
+  # OwnerSessionTest 가 /api/users/me 응답에서 확인한다.
+  owner:
+    display-name: "テスト主"
+    email: "owner@orbit.test"
+
+  jwt:
+    # main 의 application.yml 은 병합되지 않고 이 파일로 대체되므로 여기에도 둔다
+    secret: test-only-secret-key-for-orbit-local-tests-0123456789
+    access-token-validity: 15m
+    # 만료 기간을 검증하는 테스트가 있어 운영 설정과 같은 값으로 둔다
+    refresh-token-validity: 365d
+
+  media:
+    # build/ 아래라 clean 으로 함께 지워지고 사용자 데이터 디렉토리는 건드리지 않는다
+    dir: ./build/test-media
+
+  gemini:
+    # false 면 Gemini 어댑터 빈이 만들어지지 않아 테스트가 실제 API 를 부를 수 없다.
+    # AI 테스트는 FakeAiConfig 의 가짜를 등록해서 쓴다.
+    enabled: false
