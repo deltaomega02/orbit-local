@@ -1,0 +1,233 @@
+# Windows 배포본(포터블 zip, 가능하면 msi)을 만든다.
+# jpackage는 크로스 빌드가 안 돼서 windows 러너에서 굽는다.
+# 산출물이 공개되므로 API 키는 넣지 않고, 사용자가 앱 설정 화면에서 입력한다.
+
+name: Windows package (jpackage)
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        # 첫 자리는 0 이 될 수 없다(jpackage 가 OS 버전 규격으로 옮김). build.gradle.kts 의 version 과는 별개다.
+        description: "앱 버전 (예: 1.0.0). 첫 자리는 1 이상, MSI 규격상 major 1-255 / minor 0-255 / build 0-65535"
+        required: false
+        default: "1.0.0"
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+env:
+  APP_NAME: Orbit
+
+jobs:
+  package:
+    runs-on: windows-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: JDK 21 준비
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: 버전 정하기
+        shell: pwsh
+        # 입력을 스크립트 본문에 직접 치환하면 스크립트 인젝션이 되므로 env 로 넘긴다.
+        env:
+          INPUT_VERSION: ${{ github.event.inputs.version }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          # 수동 실행이면 입력값, 태그 push 면 태그에서 앞 'v' 를 뗀 값을 쓴다.
+          $v = $env:INPUT_VERSION
+          if ([string]::IsNullOrWhiteSpace($v)) {
+            $v = $env:REF_NAME -replace '^v', ''
+          }
+          if ($v -notmatch '^[1-9]\d*(\.\d+){0,2}$') {
+            Write-Error "버전이 jpackage 규격에 맞지 않는다: '$v' (예: 1.0.0 — 첫 자리는 1 이상이어야 한다)"
+            exit 1
+          }
+          "APP_VERSION=$v" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Host "APP_VERSION=$v"
+
+      # 패키징 전에 Windows 에서도 테스트를 돌린다.
+      - name: 테스트
+        shell: pwsh
+        run: .\gradlew.bat test --console=plain --no-daemon
+
+      - name: jar 빌드
+        shell: pwsh
+        run: .\gradlew.bat packagingInput --console=plain --no-daemon
+
+      - name: 안내문을 앱 폴더용으로 변환 (UTF-8 BOM + CRLF)
+        shell: pwsh
+        run: |
+          # 메모장에서 열리므로 BOM(Shift_JIS 오인 방지)과 CRLF(옛 메모장 줄바꿈)를 붙인다.
+          # 파일 이름이 일본어라 YAML 에 직접 적지 않고 검색해서 고른다.
+          New-Item -ItemType Directory -Force -Path build/packaging/extras | Out-Null
+          $src = Get-ChildItem -Path packaging/windows -Filter *.txt | Select-Object -First 1
+          if (-not $src) { Write-Error "packaging/windows 에 안내문(.txt)이 없다"; exit 1 }
+          $text = [System.IO.File]::ReadAllText($src.FullName)
+          $text = ($text -replace "`r`n", "`n") -replace "`n", "`r`n"
+          $dest = Join-Path (Resolve-Path build/packaging/extras) $src.Name
+          [System.IO.File]::WriteAllText($dest, $text, (New-Object System.Text.UTF8Encoding $true))
+          Write-Host "안내문: $dest ($((Get-Item $dest).Length) bytes)"
+
+      # --- 포터블 (app-image)
+      - name: app-image 만들기
+        shell: pwsh
+        run: |
+          # --win-console 은 주지 않는다. 주면 실행마다 콘솔 창이 뜨고 닫으면 앱이 종료된다.
+          #
+          # --add-modules: 스프링·하이버네이트는 리플렉션을 써서 jdeps 추측으로는 모듈이 빠진다.
+          # 예) jdk.crypto.ec 가 없으면 Gemini TLS 핸드셰이크가 실패한다.
+          #
+          # -Xmx1536m: 서버가 사진을 직접 디코드해 768m 로는 OOM 이 난다. 상한이라 평소 점유량은 같다.
+          jpackage `
+            --type app-image `
+            --name "$env:APP_NAME" `
+            --app-version "$env:APP_VERSION" `
+            --vendor "Orbit" `
+            --description "Orbit - 服とコーディネートの記録" `
+            --copyright "Orbit" `
+            --input build/packaging/input `
+            --main-jar orbit.jar `
+            --icon packaging/windows/orbit.ico `
+            --dest build/packaging/app-image `
+            --java-options "-Dorbit.desktop=true" `
+            --java-options "-Djava.awt.headless=false" `
+            --java-options "-Dfile.encoding=UTF-8" `
+            --java-options "-Xmx1536m" `
+            --add-modules java.se,jdk.unsupported,jdk.crypto.ec,jdk.localedata,jdk.charsets,jdk.zipfs,jdk.management
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: 안내문을 앱 폴더에 넣기
+        shell: pwsh
+        run: |
+          Copy-Item build/packaging/extras/* "build/packaging/app-image/$env:APP_NAME/" -Force
+          Get-ChildItem "build/packaging/app-image/$env:APP_NAME"
+
+      - name: 포터블 zip 으로 묶기
+        shell: pwsh
+        run: |
+          # 런타임 파일이 수백 개라 느린 Compress-Archive 대신 .NET 으로 묶는다.
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          # .NET 은 상대 경로를 PowerShell 위치가 아닌 프로세스 현재 디렉터리 기준으로 풀어 절대 경로를 쓴다.
+          $zip = Join-Path (Resolve-Path dist).Path "Orbit-$env:APP_VERSION-windows-portable.zip"
+          # includeBaseDirectory=false 라 zip 최상위에는 Orbit/ 폴더 하나만 들어간다.
+          [System.IO.Compression.ZipFile]::CreateFromDirectory(
+            (Resolve-Path build/packaging/app-image).Path,
+            $zip,
+            [System.IO.Compression.CompressionLevel]::Optimal,
+            $false)
+          "PORTABLE_ZIP=$zip" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Host ("zip 크기: {0:N1} MB" -f ((Get-Item $zip).Length / 1MB))
+
+      - name: zip 내용 확인
+        shell: pwsh
+        run: |
+          # 필수 항목이 들어갔는지 확인하고 로그에 출력한다.
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $archive = [System.IO.Compression.ZipFile]::OpenRead($env:PORTABLE_ZIP)
+          try {
+            $names = $archive.Entries | ForEach-Object { $_.FullName }
+            Write-Host "총 $($names.Count) 개 항목"
+            Write-Host "── 최상위 ──"
+            $names | Where-Object { ($_ -split '/').Count -le 2 } | Sort-Object
+            foreach ($must in @("$env:APP_NAME/$env:APP_NAME.exe", "$env:APP_NAME/app/orbit.jar")) {
+              if ($names -notcontains $must) { Write-Error "zip 에 $must 가 없다"; exit 1 }
+            }
+            # 런타임이 없으면 JDK 가 없는 기기에서 실행되지 않는다.
+            $runtime = $names | Where-Object { $_ -like "$env:APP_NAME/runtime/*" }
+            if (-not $runtime) {
+              Write-Error "zip 에 자바 런타임이 없다 — 받는 사람 기계에서 실행되지 않는다"; exit 1
+            }
+            Write-Host "런타임 파일 $($runtime.Count) 개"
+            if ($names | Where-Object { $_ -like "*/jvm.dll" }) { Write-Host "jvm.dll 확인" }
+            else { Write-Host "::warning::jvm.dll 을 찾지 못했다. 런타임 구조를 확인할 것" }
+            if (-not ($names | Where-Object { $_ -like "$env:APP_NAME/*.txt" })) {
+              Write-Error "zip 에 일본어 안내문이 없다"; exit 1
+            }
+            Write-Host "필수 항목 확인 완료"
+          } finally { $archive.Dispose() }
+
+      # --- MSI (선택)
+      - name: msi 만들기 (WiX 가 있을 때만)
+        id: msi
+        shell: pwsh
+        # 주 배포 형태는 포터블 zip 이라 MSI 가 실패해도 워크플로는 계속한다.
+        continue-on-error: true
+        run: |
+          # JDK 21 jpackage 는 WiX 3.x(candle/light)만 쓴다. 러너에 있으면 쓰고 없으면 건너뛴다.
+          # 네트워크 설치는 실패 지점이 하나 더 늘어서 시도하지 않는다.
+          if (-not (Get-Command candle.exe -ErrorAction SilentlyContinue)) {
+            $found = Get-ChildItem "C:\Program Files (x86)" -Filter "WiX Toolset v3*" -Directory -ErrorAction SilentlyContinue |
+                     Sort-Object Name | Select-Object -Last 1
+            if ($found) {
+              $env:PATH = "$($found.FullName)\bin;$env:PATH"
+              Write-Host "WiX 발견: $($found.FullName)"
+            }
+          }
+          if (-not (Get-Command candle.exe -ErrorAction SilentlyContinue)) {
+            Write-Host "::warning::러너에 WiX 3 이 없어 MSI 를 건너뛴다. 포터블 zip 은 정상적으로 만들어졌다"
+            exit 1
+          }
+
+          # 위에서 만든 app-image 를 재사용한다.
+          # --win-per-user-install: 관리자 권한 없이 설치되게 한다.
+          jpackage `
+            --type msi `
+            --app-image "build/packaging/app-image/$env:APP_NAME" `
+            --name "$env:APP_NAME" `
+            --app-version "$env:APP_VERSION" `
+            --vendor "Orbit" `
+            --dest dist `
+            --win-per-user-install `
+            --win-menu `
+            --win-shortcut `
+            --win-dir-chooser
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Get-ChildItem dist
+
+      # --- 산출물
+      - name: 배포자용 확인 문서 넣기
+        shell: pwsh
+        run: |
+          # 배포자용 한국어 문서라 zip 안이 아니라 옆에 둔다.
+          Copy-Item packaging/TESTING-ko.md dist/ -Force
+          Get-ChildItem dist
+
+      - name: 아티팩트 업로드
+        uses: actions/upload-artifact@v4
+        with:
+          name: orbit-windows-${{ env.APP_VERSION }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: 결과 요약
+        if: always()
+        shell: pwsh
+        run: |
+          # 단계 성공 여부가 아니라 파일 존재로 판단한다.
+          $msi = if (Get-ChildItem dist -Filter *.msi -ErrorAction SilentlyContinue) { "만들어졌다" } else { "건너뛰었다 (러너에 WiX 3 없음)" }
+          @(
+            "## Orbit Windows 패키지",
+            "",
+            "| 항목 | 값 |",
+            "|---|---|",
+            "| 버전 | ``$env:APP_VERSION`` |",
+            "| 포터블 zip | 만들어졌다 |",
+            "| MSI | $msi |",
+            "",
+            "포터블 zip 이 주 배포 형태다. 압축을 풀고 ``Orbit.exe`` 를 더블클릭하면 된다.",
+            "동봉된 ``TESTING-ko.md`` 로 Windows 실기 확인을 먼저 할 것."
+          ) | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
