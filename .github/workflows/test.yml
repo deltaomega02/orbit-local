@@ -1,0 +1,40 @@
+# push·PR마다 테스트 실행. Windows 배포본은 windows-package.yml에서 따로 만든다.
+
+name: Test
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+# 같은 브랜치에 새 push 가 오면 이전 실행은 취소한다.
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21" # build.gradle.kts 의 jvmToolchain(21) 과 같아야 한다
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: 테스트
+        run: ./gradlew test --no-daemon
+
+      # 실패 원인 확인용 HTML 리포트
+      - name: 리포트 보관
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-report
+          path: build/reports/tests/test
+          retention-days: 7
+          if-no-files-found: ignore
